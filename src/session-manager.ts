@@ -8,6 +8,25 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { createRequire } from 'node:module';
+
+const _require = createRequire(import.meta.url);
+function getPluginVersion(): string {
+  try {
+    // Walk up from this file to find package.json
+    let dir = path.dirname(_require.resolve('./session-manager.js').replace('/dist/', '/'));
+    for (let i = 0; i < 5; i++) {
+      const pkgPath = path.join(dir, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+        if (pkg.version) return pkg.version;
+      }
+      dir = path.dirname(dir);
+    }
+  } catch { /* ignore */ }
+  return 'unknown';
+}
+
 
 import { PersistentClaudeSession } from './persistent-session.js';
 import {
@@ -321,6 +340,54 @@ export class SessionManager {
       output: 'text' in result ? result.text : '',
       sessionId: managed.claudeSessionId,
       events: [],
+    };
+  }
+
+  // ─── Health ────────────────────────────────────────────────────────────
+
+  /**
+   * Returns an overview of all active sessions — analogous to a dashboard.
+   * Unlike claude_session_status (single session), this gives the aggregate
+   * view: how many sessions are running, which are busy, total uptime, etc.
+   */
+  health(): {
+    ok: boolean;
+    version: string;
+    sessions: number;
+    sessionNames: string[];
+    uptime: number;
+    details: Array<{
+      name: string;
+      ready: boolean;
+      busy: boolean;
+      paused: boolean;
+      turns: number;
+      costUsd: number;
+      contextPercent: number;
+      lastActivity: string | null;
+    }>;
+  } {
+    const details = Array.from(this.sessions.entries()).map(([name, managed]) => {
+      const stats = managed.session.getStats();
+      return {
+        name,
+        ready: stats.isReady,
+        busy: managed.session.isBusy,
+        paused: managed.session.isPaused,
+        turns: stats.turns,
+        costUsd: stats.costUsd,
+        contextPercent: stats.contextPercent,
+        lastActivity: stats.lastActivity,
+      };
+    });
+
+    return {
+      ok: true,
+      version: getPluginVersion(),
+      sessions: this.sessions.size,
+      sessionNames: Array.from(this.sessions.keys()),
+      uptime: process.uptime(),
+      details,
     };
   }
 

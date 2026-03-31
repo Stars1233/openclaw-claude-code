@@ -208,6 +208,18 @@ const plugin = {
       },
     });
 
+    // ─── Tool: claude_sessions_overview ──────────────────────────────────
+
+    api.registerTool({
+      name: 'claude_sessions_overview',
+      description: 'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use claude_session_status instead.',
+      parameters: { type: 'object', properties: {} },
+      execute: async (_id) => {
+        if (!manager) return { ok: true, version: 'unknown', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
+        return manager.health();
+      },
+    });
+
     // ─── Tool: claude_session_status ─────────────────────────────────────
 
     api.registerTool({
