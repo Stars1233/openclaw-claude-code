@@ -148,9 +148,11 @@ src/
 |-----|-------------|
 | [Getting Started](./docs/getting-started.md) | Installation, configuration, first session |
 | [Sessions](./docs/sessions.md) | Persistent sessions, resume, model switching, cost tracking |
+| [Session Inbox](./docs/inbox.md) | Cross-session messaging |
 | [Multi-Engine](./docs/multi-engine.md) | Claude + Codex engines, ISession interface, adding engines |
 | [Council](./docs/council.md) | Multi-agent collaboration, worktree isolation, consensus voting |
-| [Tools Reference](./docs/tools.md) | Complete tool API with all parameters |
+| [Ultraplan & Ultrareview](./docs/ultra.md) | Deep planning and fleet code review |
+| [Tools Reference](./docs/tools.md) | Complete tool API (24 tools) |
 | [CLI Reference](./docs/cli.md) | Command-line interface |
 | [Contributing](./CONTRIBUTING.md) | Dev setup, code style, PR guidelines |
 
