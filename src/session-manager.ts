@@ -709,13 +709,23 @@ export class SessionManager {
 
   private councils = new Map<string, Council>();
 
-  async councilStart(task: string, config: CouncilConfig): Promise<CouncilSession> {
+  councilStart(task: string, config: CouncilConfig): CouncilSession {
     const council = new Council(config, this);
-    const session = await council.run(task);
-    if (session.status === 'running') {
-      this.councils.set(session.id, council);
-    }
-    return session;
+    const initialSession = council.init(task);
+
+    // Store BEFORE running so council_status/abort/inject work while it's active
+    this.councils.set(initialSession.id, council);
+
+    // Run in background — callers poll via councilStatus()
+    council.run().then(() => {
+      // Cleanup on completion
+      this.councils.delete(initialSession.id);
+    }).catch((err) => {
+      console.error(`[SessionManager] Council ${initialSession.id} failed:`, err);
+      this.councils.delete(initialSession.id);
+    });
+
+    return initialSession;
   }
 
   councilStatus(id: string): CouncilSession | undefined {

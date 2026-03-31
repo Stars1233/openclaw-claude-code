@@ -177,7 +177,8 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         this._stats.turns++;
         this._stats.lastActivity = now;
 
-        // Estimate tokens from response length (rough: 1 token ≈ 4 chars)
+        // Rough token estimate: ~1 token per 4 chars (~30% error margin).
+        // TODO: Parse actual usage from codex CLI if it gains a --usage flag.
         const estimatedOutputTokens = Math.ceil(stdout.length / 4);
         const estimatedInputTokens = Math.ceil(message.length / 4);
         this._stats.tokensIn += estimatedInputTokens;
