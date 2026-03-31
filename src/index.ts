@@ -443,8 +443,8 @@ const plugin = {
           maxBudgetUsd: args.maxBudgetUsd as number | undefined,
         };
 
-        const session = await getManager().councilStart(args.task as string, config);
-        return { ok: true, ...session };
+        const session = getManager().councilStart(args.task as string, config);
+        return { ok: true, ...session, note: 'Council running in background. Poll with council_status.' };
       },
     });
 

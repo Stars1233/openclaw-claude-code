@@ -116,6 +116,12 @@ async function setupWorktrees(
       const isValid = await spawnAsync('git', ['-C', wtDir, 'rev-parse', '--git-dir'], { timeout: 5000 })
         .then(() => true).catch(() => false);
       if (isValid) {
+        // Warn: hard reset discards uncommitted changes from any previous run
+        const dirty = await spawnAsync('git', ['-C', wtDir, 'status', '--porcelain'], { timeout: 5000 })
+          .then(r => r.stdout.trim().length > 0).catch(() => false);
+        if (dirty) {
+          console.log(`[Council] WARNING: worktree ${wtDir} has uncommitted changes — discarding via hard reset`);
+        }
         await spawnAsync('git', ['-C', wtDir, 'checkout', branch], { timeout: 5000 }).catch(() => {});
         await spawnAsync('git', ['-C', wtDir, 'reset', '--hard', 'HEAD'], { timeout: 5000 }).catch(() => {});
         worktreeMap.set(agent.name, wtDir);
@@ -453,27 +459,36 @@ export class Council extends EventEmitter {
     return response;
   }
 
-  // ─── Main Orchestration Loop ──────────────────────────────────────────
+  // ─── Initialisation (synchronous — returns handle immediately) ──────
 
-  async run(task: string): Promise<CouncilSession> {
+  init(task: string): CouncilSession {
     if (!task || task.trim().length < MIN_TASK_LENGTH) {
       throw new Error(`Task description too short (min ${MIN_TASK_LENGTH} chars)`);
     }
-    const trimmedTask = task.trim();
 
     const session: CouncilSession = {
       id: randomUUID(),
-      task: trimmedTask,
+      task: task.trim(),
       config: this.config,
       responses: [],
       status: 'running',
       startTime: new Date().toISOString(),
     };
     this._session = session;
+    return session;
+  }
+
+  // ─── Main Orchestration Loop ──────────────────────────────────────────
+
+  async run(): Promise<CouncilSession> {
+    const session = this._session;
+    if (!session) throw new Error('Council not initialised — call init() first');
+    const trimmedTask = session.task;
 
     console.log(`[Council] Starting: ${this.config.agents.length} agents, max ${this.config.maxRounds} rounds`);
     console.log(`[Council] Task: ${trimmedTask}`);
     console.log(`[Council] Dir: ${this.config.projectDir}`);
+    console.log(`[Council] WARNING: agents run with permissionMode=bypassPermissions for autonomous execution`);
     this.emitEvent({ type: 'session-start', sessionId: session.id, task: trimmedTask });
 
     // Set up git worktrees
