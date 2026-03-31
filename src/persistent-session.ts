@@ -278,7 +278,7 @@ export class PersistentClaudeSession extends EventEmitter {
       this.once('ready', () => { clearTimeout(timeout); resolve(this); });
       this.once('error', (err) => { clearTimeout(timeout); reject(err); });
 
-      // hanging or incorrectly marking a dead process as "ready".
+      // Detect premature CLI exit to avoid hanging or marking a dead process as "ready".
       const onCloseBeforeReady = (code: number | null) => {
         if (!this._isReady) {
           clearTimeout(timeout);
@@ -300,7 +300,7 @@ export class PersistentClaudeSession extends EventEmitter {
       this.once('init', onInit);
       setTimeout(() => {
         this.removeListener('init', onInit);
-        // If it was killed or has an exitCode, we reject the promise to prevent
+        // If process already exited, reject instead of falsely marking ready
         if (this.proc?.killed || this.proc?.exitCode !== null) {
           clearTimeout(timeout);
           this.removeListener('close', onCloseBeforeReady);
@@ -309,6 +309,7 @@ export class PersistentClaudeSession extends EventEmitter {
         }
         if (!this._isReady) {
           this._isReady = true;
+          this.removeListener('close', onCloseBeforeReady);
           this.emit('ready');
         }
       }, 2000);
