@@ -12,7 +12,7 @@
 import { SessionManager } from './session-manager.js';
 import { createProxyHandler } from './proxy/handler.js';
 import { EmbeddedServer } from './embedded-server.js';
-import type { PluginConfig, EffortLevel, EngineType, CouncilConfig, AgentPersona, UltraplanResult, UltrareviewResult } from './types.js';
+import type { PluginConfig, EffortLevel, EngineType, CouncilConfig, AgentPersona } from './types.js';
 
 // ─── Standalone Export ───────────────────────────────────────────────────────
 
