@@ -214,11 +214,140 @@ export class SessionManager {
     managed.config.effort = level;
   }
 
+  /**
+   * Switch model for a session.
+   * Updates in-memory config only (takes effect on next restart/resume).
+   * For immediate effect, call restartWithConfig() explicitly.
+   */
   setModel(name: string, model: string): void {
     const managed = this._getSession(name);
     const resolved = this._resolveModel(model, managed.config.modelOverrides);
     managed.config.model = model;
     managed.config.resolvedModel = resolved;
+  }
+
+  /**
+   * Switch model immediately by restarting the session with --resume.
+   * Conversation history is preserved via the claude session ID.
+   *
+   * Guards:
+   * - Rejects if session is currently processing a message (busy guard)
+   * - Validates model string against known aliases before restarting
+   * - Rolls back to old session if startSession fails
+   */
+  async switchModel(name: string, model: string): Promise<SessionInfo> {
+    const managed = this._getSession(name);
+
+    // Busy guard — don't restart mid-message
+    if (managed.session.isBusy) {
+      throw new Error(`Session '${name}' is currently processing a message. Wait for it to finish before switching model.`);
+    }
+
+    const sessionId = managed.claudeSessionId || managed.session.sessionId;
+    if (!sessionId) throw new Error(`Session '${name}' has no claude session ID — cannot resume after restart`);
+
+    // Validate model — must be a known alias or contain a recognisable pattern
+    const resolvedModel = this._resolveModel(model, managed.config.modelOverrides);
+    const knownPatterns = ['claude-', 'gemini-', 'gpt-', 'anthropic/', 'google/', 'openai/'];
+    const looksValid = knownPatterns.some(p => resolvedModel.includes(p));
+    if (!looksValid) {
+      throw new Error(`Unknown model '${model}' (resolved: '${resolvedModel}'). Use a known alias (opus, sonnet, haiku, gemini-pro, etc.) or a full provider/model string.`);
+    }
+
+    const oldConfig = { ...managed.config };
+    managed.session.stop();
+    this.sessions.delete(name);
+
+    try {
+      return await this.startSession({
+        ...oldConfig,
+        name,
+        model,
+        resumeSessionId: sessionId,
+      });
+    } catch (err) {
+      // Rollback: restart with original config
+      console.error(`[SessionManager] switchModel failed for '${name}', attempting rollback:`, err);
+      try {
+        await this.startSession({ ...oldConfig, name, resumeSessionId: sessionId });
+      } catch (rollbackErr) {
+        console.error(`[SessionManager] Rollback also failed for '${name}':`, rollbackErr);
+      }
+      throw new Error(`Failed to switch model for '${name}': ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Update allowedTools or disallowedTools at runtime.
+   *
+   * The claude CLI does not support changing tool lists while running, so
+   * the only way to apply new constraints is to restart the process with
+   * the updated flags and --resume to replay conversation history.
+   *
+   * Guards:
+   * - Rejects if session is busy
+   * - Rolls back to old session if startSession fails
+   * - merge:true adds tools; removeTools removes specific tools from the list
+   */
+  async updateTools(
+    name: string,
+    opts: {
+      allowedTools?: string[];
+      disallowedTools?: string[];
+      removeTools?: string[];
+      merge?: boolean;
+    },
+  ): Promise<SessionInfo> {
+    const managed = this._getSession(name);
+
+    // Busy guard
+    if (managed.session.isBusy) {
+      throw new Error(`Session '${name}' is currently processing a message. Wait for it to finish before updating tools.`);
+    }
+
+    const sessionId = managed.claudeSessionId || managed.session.sessionId;
+    if (!sessionId) throw new Error(`Session '${name}' has no claude session ID — cannot resume after restart`);
+
+    const oldConfig = { ...managed.config };
+    let newAllowed = opts.allowedTools;
+    let newDisallowed = opts.disallowedTools;
+
+    if (opts.merge) {
+      newAllowed = opts.allowedTools
+        ? [...new Set([...(oldConfig.allowedTools || []), ...opts.allowedTools])]
+        : oldConfig.allowedTools;
+      newDisallowed = opts.disallowedTools
+        ? [...new Set([...(oldConfig.disallowedTools || []), ...opts.disallowedTools])]
+        : oldConfig.disallowedTools;
+    }
+
+    // Remove specific tools if requested
+    if (opts.removeTools?.length) {
+      const removeSet = new Set(opts.removeTools);
+      if (newAllowed) newAllowed = newAllowed.filter(t => !removeSet.has(t));
+      if (newDisallowed) newDisallowed = newDisallowed.filter(t => !removeSet.has(t));
+    }
+
+    managed.session.stop();
+    this.sessions.delete(name);
+
+    try {
+      return await this.startSession({
+        ...oldConfig,
+        name,
+        allowedTools: newAllowed,
+        disallowedTools: newDisallowed,
+        resumeSessionId: sessionId,
+      });
+    } catch (err) {
+      console.error(`[SessionManager] updateTools failed for '${name}', attempting rollback:`, err);
+      try {
+        await this.startSession({ ...oldConfig, name, resumeSessionId: sessionId });
+      } catch (rollbackErr) {
+        console.error(`[SessionManager] Rollback also failed for '${name}':`, rollbackErr);
+      }
+      throw new Error(`Failed to update tools for '${name}': ${(err as Error).message}`);
+    }
   }
 
   getCost(name: string) {
