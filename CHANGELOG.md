@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-03-31
+
+### Added
+- Session Inbox — cross-session messaging with `claude_session_send_to`, `claude_session_inbox`, `claude_session_deliver_inbox`. Idle sessions receive immediately; busy sessions queue for later delivery. Broadcast via `"*"` (#22)
+- Ultraplan — dedicated Opus planning session (up to 30 min) with `ultraplan_start`, `ultraplan_status` (#22)
+- Ultrareview — fleet of 5-20 specialized reviewer agents in parallel via council system with `ultrareview_start`, `ultrareview_status`. 20 review angles: security, logic, performance, types, concurrency, etc. (#22)
+- Tool count: 17 → 24
+
+### Fixed
+- Session creation race condition — concurrent `startSession()` calls no longer create duplicates (#23)
+- File persistence error handling — proper error callbacks, orphan `.tmp` cleanup on rename failure (#23)
+- HTTP stream reader leak — `try/finally { reader.cancel() }` on all streaming paths (#23)
+- CORS restricted to localhost origins only (#23)
+- Agent name validation prevents git branch injection (#23)
+- CWD path normalization via `path.resolve()` (#23)
+- Session resume logic uses `??` instead of `||` for explicit null handling (#23)
+- Stderr API key sanitization masks `sk-ant-*`, `*_API_KEY=*`, `Bearer *` patterns (#23)
+- Council git errors now logged instead of silently swallowed (#23)
+- SKILL.md cleaned up: removed 8 references to unimplemented CLI commands (#23)
+- README tool count and CLI version accuracy (#23)
+
 ## [2.2.0] - 2026-03-31
 
 ### Added
