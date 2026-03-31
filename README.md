@@ -186,33 +186,33 @@ claude-code-skill session-cost myproject
 
 ```
                     ┌─────────────────────────────┐
-                    │      OpenClaw Gateway        │
-                    │   (or standalone HTTP server) │
+                    │      OpenClaw Gateway       │
+                    │ (or standalone HTTP server) │
                     └──────────┬──────────────────┘
                                │ 14 tools
                     ┌──────────▼──────────────────┐
-                    │     Plugin Entry (index.ts)   │
-                    │  tool registration + hooks     │
+                    │     Plugin Entry (index.ts) │
+                    │  tool registration + hooks  │
                     └──────────┬──────────────────┘
                                │
               ┌────────────────▼────────────────┐
-              │      SessionManager              │
-              │  multi-session orchestration      │
-              │  persistence, TTL, health         │
+              │      SessionManager             │
+              │  multi-session orchestration    │
+              │  persistence, TTL, health       │
               └───────┬────────────────┬────────┘
                       │                │
-         ┌────────────▼──┐    ┌───────▼──────────┐
+         ┌────────────▼───┐    ┌───────▼───────────┐
          │ Persistent     │    │ Multi-Model       │
          │ ClaudeSession  │    │ Proxy             │
          │                │    │                   │
          │ CLI subprocess │    │ Anthropic ↔ OpenAI│
          │ JSON streaming │    │ SSE conversion    │
          │ event tracking │    │ Schema cleaning   │
-         └───────┬────────┘    └───────┬──────────┘
+         └───────┬────────┘    └───────┬───────────┘
                  │                     │
          ┌───────▼────────┐    ┌───────▼──────────┐
-         │  Claude Code    │    │  Gemini / GPT /  │
-         │  CLI            │    │  Other Models    │
+         │  Claude Code   │    │  Gemini / GPT /  │
+         │  CLI           │    │  Other Models    │
          └────────────────┘    └──────────────────┘
 ```
 
