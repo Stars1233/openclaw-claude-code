@@ -28,26 +28,23 @@ interface PromptBuildEvent {
  *   import { registerPromptBypass } from './hooks/prompt-bypass.js';
  *   registerPromptBypass(api);
  */
-export function registerPromptBypass(
-  api: { registerHook(event: string, handler: (event: Record<string, unknown>) => Promise<Record<string, unknown>>): void }
-): void {
-  api.registerHook(
-    'before_prompt_build',
-    async (event: Record<string, unknown>): Promise<Record<string, unknown>> => {
-      const ev = event as PromptBuildEvent;
-      const workspaceDir = ev.workspaceDir;
+export function registerPromptBypass(api: {
+  registerHook(event: string, handler: (event: Record<string, unknown>) => Promise<Record<string, unknown>>): void;
+}): void {
+  api.registerHook('before_prompt_build', async (event: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const ev = event as PromptBuildEvent;
+    const workspaceDir = ev.workspaceDir;
 
-      if (!workspaceDir) return {};
+    if (!workspaceDir) return {};
 
-      const markerPath = path.join(workspaceDir, PASSTHROUGH_MARKER);
-      if (!fs.existsSync(markerPath)) return {};
+    const markerPath = path.join(workspaceDir, PASSTHROUGH_MARKER);
+    if (!fs.existsSync(markerPath)) return {};
 
-      console.log(`[openclaw-claude-code] Passthrough mode: ${workspaceDir}`);
+    console.log(`[openclaw-claude-code] Passthrough mode: ${workspaceDir}`);
 
-      return {
-        systemPrompt: '',
-        bootstrapFiles: [],
-      };
-    }
-  );
+    return {
+      systemPrompt: '',
+      bootstrapFiles: [],
+    };
+  });
 }

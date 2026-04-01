@@ -69,9 +69,15 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     };
   }
 
-  get isReady(): boolean { return this._isReady; }
-  get isPaused(): boolean { return this._isPaused; }
-  get isBusy(): boolean { return this._isBusy; }
+  get isReady(): boolean {
+    return this._isReady;
+  }
+  get isPaused(): boolean {
+    return this._isPaused;
+  }
+  get isBusy(): boolean {
+    return this._isBusy;
+  }
 
   // ─── Start ───────────────────────────────────────────────────────────────
 
@@ -98,13 +104,11 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     if (!this._isReady) throw new Error('Session not ready. Call start() first.');
 
     const requestId = ++this.currentRequestId;
-    const textMessage = typeof message === 'string'
-      ? message
-      : JSON.stringify(message);
+    const textMessage = typeof message === 'string' ? message : JSON.stringify(message);
 
     if (!options.waitForComplete) {
       // Fire-and-forget: spawn in background
-      this._runCodex(textMessage, options).catch(err => this.emit('error', err));
+      this._runCodex(textMessage, options).catch((err) => this.emit('error', err));
       return { requestId, sent: true };
     }
 
@@ -117,10 +121,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
   }
 
   private async _runCodex(message: string, options: SessionSendOptions): Promise<TurnResult> {
-    const args: string[] = [
-      '--full-auto',
-      '--quiet',
-    ];
+    const args: string[] = ['--full-auto', '--quiet'];
 
     // Model
     const model = this.options.model;
@@ -157,7 +158,9 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
       proc.stdout?.on('data', (data: Buffer) => {
         const chunk = data.toString();
         stdout += chunk;
-        try { options.callbacks?.onText?.(chunk); } catch {}
+        try {
+          options.callbacks?.onText?.(chunk);
+        } catch {}
         this.emit('text', chunk);
       });
 
@@ -177,8 +180,9 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         this._stats.turns++;
         this._stats.lastActivity = now;
 
-        // Rough token estimate: ~1 token per 4 chars (~30% error margin).
-        // TODO: Parse actual usage from codex CLI if it gains a --usage flag.
+        // Rough token estimate: ~1 token per 4 chars.
+        // Error margin: ~30% for English text, higher for code with long identifiers.
+        // TODO(codex-cli): Replace with actual usage data when codex gains --usage output.
         const estimatedOutputTokens = Math.ceil(stdout.length / 4);
         const estimatedInputTokens = Math.ceil(message.length / 4);
         this._stats.tokensIn += estimatedInputTokens;
@@ -230,9 +234,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
       lastActivity: this._stats.lastActivity,
       contextPercent: 0, // Codex doesn't expose context usage
       sessionId: this.sessionId,
-      uptime: this._startTime
-        ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000)
-        : 0,
+      uptime: this._startTime ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000) : 0,
     };
   }
 
@@ -246,8 +248,12 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     return { text: event.result as string, event };
   }
 
-  getEffort(): EffortLevel { return this.options.effort || 'auto'; }
-  setEffort(level: EffortLevel): void { this.options.effort = level; }
+  getEffort(): EffortLevel {
+    return this.options.effort || 'auto';
+  }
+  setEffort(level: EffortLevel): void {
+    this.options.effort = level;
+  }
 
   getCost(): CostBreakdown {
     const pricing = getModelPricing(this.options.model);
@@ -271,12 +277,20 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
     return alias;
   }
 
-  pause(): void { this._isPaused = true; this.emit('paused', { sessionId: this.sessionId }); }
-  resume(): void { this._isPaused = false; this.emit('resumed', { sessionId: this.sessionId }); }
+  pause(): void {
+    this._isPaused = true;
+    this.emit('paused', { sessionId: this.sessionId });
+  }
+  resume(): void {
+    this._isPaused = false;
+    this.emit('resumed', { sessionId: this.sessionId });
+  }
 
   stop(): void {
     if (this.currentProc) {
-      try { this.currentProc.kill('SIGTERM'); } catch {}
+      try {
+        this.currentProc.kill('SIGTERM');
+      } catch {}
       this.currentProc = null;
     }
     this._isReady = false;
@@ -289,7 +303,6 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
   private _updateCost(): void {
     const pricing = getModelPricing(this.options.model);
     this._stats.costUsd =
-      (this._stats.tokensIn / 1_000_000) * pricing.input +
-      (this._stats.tokensOut / 1_000_000) * pricing.output;
+      (this._stats.tokensIn / 1_000_000) * pricing.input + (this._stats.tokensOut / 1_000_000) * pricing.output;
   }
 }

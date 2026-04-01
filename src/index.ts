@@ -12,7 +12,7 @@
 import { SessionManager } from './session-manager.js';
 import { createProxyHandler } from './proxy/handler.js';
 import { EmbeddedServer } from './embedded-server.js';
-import type { PluginConfig, EffortLevel, EngineType, CouncilConfig, AgentPersona } from './types.js';
+import type { PluginConfig, EffortLevel, CouncilConfig, AgentPersona } from './types.js';
 
 // ─── Standalone Export ───────────────────────────────────────────────────────
 
@@ -53,7 +53,8 @@ interface PluginAPI {
 const plugin = {
   id: 'openclaw-claude-code',
   name: 'Claude Code SDK',
-  description: 'Full-featured Claude Code integration — session management, agent teams, worktree isolation, multi-model proxy',
+  description:
+    'Full-featured Claude Code integration — session management, agent teams, worktree isolation, multi-model proxy',
 
   register(api: PluginAPI): void {
     const rawConfig = (api.pluginConfig || {}) as Partial<PluginConfig>;
@@ -73,7 +74,7 @@ const plugin = {
         api.logger.info('[openclaw-claude-code] First use — initialising SessionManager and embedded server');
         manager = new SessionManager(rawConfig);
         server = new EmbeddedServer(manager);
-        server.start().catch(err => api.logger.error('[openclaw-claude-code] Embedded server failed to start:', err));
+        server.start().catch((err) => api.logger.error('[openclaw-claude-code] Embedded server failed to start:', err));
       }
       return manager;
     }
@@ -117,35 +118,43 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_session_start',
-      description: 'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI.',
+      description:
+        'Start a persistent coding session. Supports multiple engines: claude (default) for Claude Code CLI, codex for OpenAI Codex CLI.',
       parameters: {
         type: 'object',
         properties: {
-          name:                   { type: 'string', description: 'Session name (auto-generated if omitted)' },
-          cwd:                    { type: 'string', description: 'Working directory' },
-          engine:                 { type: 'string', enum: ['claude', 'codex'], description: 'Engine to use (default: claude)' },
-          model:                  { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
-          permissionMode:         { type: 'string', enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'] },
-          effort:                 { type: 'string', enum: ['low', 'medium', 'high', 'max', 'auto'] },
-          allowedTools:           { type: 'array', items: { type: 'string' }, description: 'Tools to auto-approve' },
-          disallowedTools:        { type: 'array', items: { type: 'string' }, description: 'Tools to deny' },
-          maxTurns:               { type: 'number', description: 'Max agent loop turns' },
-          maxBudgetUsd:           { type: 'number', description: 'Max API spend (USD)' },
-          systemPrompt:           { type: 'string', description: 'Replace system prompt' },
-          appendSystemPrompt:     { type: 'string', description: 'Append to system prompt' },
-          agents:                 { type: 'object', description: 'Custom sub-agents JSON' },
-          agent:                  { type: 'string', description: 'Default agent to use' },
-          bare:                   { type: 'boolean', description: 'Minimal mode: skip hooks, LSP, auto-memory, CLAUDE.md' },
-          worktree:               { type: ['string', 'boolean'], description: 'Run in git worktree' },
-          fallbackModel:          { type: 'string', description: 'Auto fallback when primary overloaded' },
-          jsonSchema:             { type: 'string', description: 'JSON Schema for structured output' },
-          mcpConfig:              { type: ['string', 'array'], description: 'MCP server config file(s)' },
-          settings:               { type: 'string', description: 'Settings.json path or inline JSON' },
-          noSessionPersistence:   { type: 'boolean', description: 'Do not save session to disk' },
-          betas:                  { type: ['string', 'array'], description: 'Custom beta headers' },
-          enableAgentTeams:       { type: 'boolean', description: 'Enable experimental agent teams' },
-          enableAutoMode:         { type: 'boolean', description: 'Enable auto permission mode' },
-          resumeSessionId:        { type: 'string', description: 'Resume an existing Claude Code session by its ID (e.g. from ~/.claude/sessions/). Replays conversation history via session/load instead of starting fresh.' },
+          name: { type: 'string', description: 'Session name (auto-generated if omitted)' },
+          cwd: { type: 'string', description: 'Working directory' },
+          engine: { type: 'string', enum: ['claude', 'codex'], description: 'Engine to use (default: claude)' },
+          model: { type: 'string', description: 'Model to use (opus, sonnet, haiku, gemini-pro, o4-mini, etc.)' },
+          permissionMode: {
+            type: 'string',
+            enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'],
+          },
+          effort: { type: 'string', enum: ['low', 'medium', 'high', 'max', 'auto'] },
+          allowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to auto-approve' },
+          disallowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to deny' },
+          maxTurns: { type: 'number', description: 'Max agent loop turns' },
+          maxBudgetUsd: { type: 'number', description: 'Max API spend (USD)' },
+          systemPrompt: { type: 'string', description: 'Replace system prompt' },
+          appendSystemPrompt: { type: 'string', description: 'Append to system prompt' },
+          agents: { type: 'object', description: 'Custom sub-agents JSON' },
+          agent: { type: 'string', description: 'Default agent to use' },
+          bare: { type: 'boolean', description: 'Minimal mode: skip hooks, LSP, auto-memory, CLAUDE.md' },
+          worktree: { type: ['string', 'boolean'], description: 'Run in git worktree' },
+          fallbackModel: { type: 'string', description: 'Auto fallback when primary overloaded' },
+          jsonSchema: { type: 'string', description: 'JSON Schema for structured output' },
+          mcpConfig: { type: ['string', 'array'], description: 'MCP server config file(s)' },
+          settings: { type: 'string', description: 'Settings.json path or inline JSON' },
+          noSessionPersistence: { type: 'boolean', description: 'Do not save session to disk' },
+          betas: { type: ['string', 'array'], description: 'Custom beta headers' },
+          enableAgentTeams: { type: 'boolean', description: 'Enable experimental agent teams' },
+          enableAutoMode: { type: 'boolean', description: 'Enable auto permission mode' },
+          resumeSessionId: {
+            type: 'string',
+            description:
+              'Resume an existing Claude Code session by its ID (e.g. from ~/.claude/sessions/). Replays conversation history via session/load instead of starting fresh.',
+          },
         },
       },
       execute: async (_id, args) => {
@@ -162,12 +171,16 @@ const plugin = {
       parameters: {
         type: 'object',
         properties: {
-          name:       { type: 'string', description: 'Session name' },
-          message:    { type: 'string', description: 'Message to send' },
-          effort:     { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Effort for this message' },
-          plan:       { type: 'boolean', description: 'Enable plan mode' },
-          timeout:    { type: 'number', description: 'Timeout in ms (default 300000)' },
-          stream:     { type: 'boolean', description: 'Collect text chunks as they arrive and include them in result.chunks[] (default false). Note: OpenClaw plugin SDK does not yet support mid-tool streaming to the caller, so chunks are buffered and returned with the final result.' },
+          name: { type: 'string', description: 'Session name' },
+          message: { type: 'string', description: 'Message to send' },
+          effort: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Effort for this message' },
+          plan: { type: 'boolean', description: 'Enable plan mode' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 300000)' },
+          stream: {
+            type: 'boolean',
+            description:
+              'Collect text chunks as they arrive and include them in result.chunks[] (default false). Note: OpenClaw plugin SDK does not yet support mid-tool streaming to the caller, so chunks are buffered and returned with the final result.',
+          },
         },
         required: ['name', 'message'],
       },
@@ -175,18 +188,18 @@ const plugin = {
         const wantChunks = args.stream as boolean | undefined;
         const chunks: string[] = [];
 
-        const result = await getManager().sendMessage(
-          args.name as string,
-          args.message as string,
-          {
-            effort: args.effort as EffortLevel | undefined,
-            plan: args.plan as boolean | undefined,
-            timeout: args.timeout as number | undefined,
-            // When stream:true, collect chunks into array for caller.
-            // True mid-tool streaming requires SDK-level support (not yet available).
-            onChunk: wantChunks ? (chunk: string) => { chunks.push(chunk); } : undefined,
-          }
-        );
+        const result = await getManager().sendMessage(args.name as string, args.message as string, {
+          effort: args.effort as EffortLevel | undefined,
+          plan: args.plan as boolean | undefined,
+          timeout: args.timeout as number | undefined,
+          // When stream:true, collect chunks into array for caller.
+          // True mid-tool streaming requires SDK-level support (not yet available).
+          onChunk: wantChunks
+            ? (chunk: string) => {
+                chunks.push(chunk);
+              }
+            : undefined,
+        });
         return {
           ok: true,
           ...result,
@@ -227,10 +240,12 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_sessions_overview',
-      description: 'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use claude_session_status instead.',
+      description:
+        'Get an aggregate overview of all active Claude Code sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use claude_session_status instead.',
       parameters: { type: 'object', properties: {} },
       execute: async (_id) => {
-        if (!manager) return { ok: true, version: 'unknown', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
+        if (!manager)
+          return { ok: true, version: 'unknown', sessions: 0, sessionNames: [], uptime: process.uptime(), details: [] };
         return manager.health();
       },
     });
@@ -259,9 +274,9 @@ const plugin = {
       parameters: {
         type: 'object',
         properties: {
-          name:    { type: 'string', description: 'Session name' },
+          name: { type: 'string', description: 'Session name' },
           pattern: { type: 'string', description: 'Regex pattern to search' },
-          limit:   { type: 'number', description: 'Max results (default 50)' },
+          limit: { type: 'number', description: 'Max results (default 50)' },
         },
         required: ['name', 'pattern'],
       },
@@ -269,7 +284,7 @@ const plugin = {
         const matches = await getManager().grepSession(
           args.name as string,
           args.pattern as string,
-          args.limit as number | undefined
+          args.limit as number | undefined,
         );
         return { ok: true, count: matches.length, matches };
       },
@@ -283,7 +298,7 @@ const plugin = {
       parameters: {
         type: 'object',
         properties: {
-          name:    { type: 'string', description: 'Session name' },
+          name: { type: 'string', description: 'Session name' },
           summary: { type: 'string', description: 'Optional summary for compaction' },
         },
         required: ['name'],
@@ -333,9 +348,9 @@ const plugin = {
       parameters: {
         type: 'object',
         properties: {
-          name:      { type: 'string', description: 'Session name' },
-          teammate:  { type: 'string', description: 'Teammate name' },
-          message:   { type: 'string', description: 'Message to send' },
+          name: { type: 'string', description: 'Session name' },
+          teammate: { type: 'string', description: 'Teammate name' },
+          message: { type: 'string', description: 'Message to send' },
         },
         required: ['name', 'teammate', 'message'],
       },
@@ -343,7 +358,7 @@ const plugin = {
         const result = await getManager().teamSend(
           args.name as string,
           args.teammate as string,
-          args.message as string
+          args.message as string,
         );
         return { ok: true, ...result };
       },
@@ -353,15 +368,28 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_session_update_tools',
-      description: 'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
+      description:
+        'Update allowedTools or disallowedTools for a running session. Restarts the session process with --resume to apply the new tool constraints while preserving conversation history. Rejects if the session is currently busy.',
       parameters: {
         type: 'object',
         properties: {
-          name:             { type: 'string', description: 'Session name' },
-          allowedTools:     { type: 'array', items: { type: 'string' }, description: 'New allowedTools list (replaces existing, or merges if merge:true)' },
-          disallowedTools:  { type: 'array', items: { type: 'string' }, description: 'New disallowedTools list (replaces existing, or merges if merge:true)' },
-          removeTools:      { type: 'array', items: { type: 'string' }, description: 'Tools to remove from allowedTools/disallowedTools (applied after merge)' },
-          merge:            { type: 'boolean', description: 'Merge with existing lists instead of replacing (default false)' },
+          name: { type: 'string', description: 'Session name' },
+          allowedTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'New allowedTools list (replaces existing, or merges if merge:true)',
+          },
+          disallowedTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'New disallowedTools list (replaces existing, or merges if merge:true)',
+          },
+          removeTools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Tools to remove from allowedTools/disallowedTools (applied after merge)',
+          },
+          merge: { type: 'boolean', description: 'Merge with existing lists instead of replacing (default false)' },
         },
         required: ['name'],
       },
@@ -380,11 +408,12 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_session_switch_model',
-      description: 'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
+      description:
+        'Switch the model for a running session immediately. Restarts the session process with --resume so the new model takes effect on the next message while preserving conversation history.',
       parameters: {
         type: 'object',
         properties: {
-          name:  { type: 'string', description: 'Session name' },
+          name: { type: 'string', description: 'Session name' },
           model: { type: 'string', description: 'New model (opus, sonnet, haiku, gemini-pro, etc.)' },
         },
         required: ['name', 'model'],
@@ -399,32 +428,33 @@ const plugin = {
 
     api.registerTool({
       name: 'council_start',
-      description: 'Start a multi-agent council that collaborates on a task using git worktree isolation, round-based execution, and consensus voting. Agents can use different engines (Claude, Codex) and models.',
+      description:
+        'Start a multi-agent council that collaborates on a task using git worktree isolation, round-based execution, and consensus voting. Agents can use different engines (Claude, Codex) and models.',
       parameters: {
         type: 'object',
         properties: {
-          task:        { type: 'string', description: 'Task description for the council to work on' },
-          projectDir:  { type: 'string', description: 'Working directory for the council project' },
+          task: { type: 'string', description: 'Task description for the council to work on' },
+          projectDir: { type: 'string', description: 'Working directory for the council project' },
           agents: {
             type: 'array',
             description: 'Agent personas. Defaults to 3-agent team (Architect, Engineer, Reviewer) if omitted.',
             items: {
               type: 'object',
               properties: {
-                name:    { type: 'string', description: 'Agent display name' },
-                emoji:   { type: 'string', description: 'Agent emoji identifier' },
+                name: { type: 'string', description: 'Agent display name' },
+                emoji: { type: 'string', description: 'Agent emoji identifier' },
                 persona: { type: 'string', description: 'Agent personality/expertise description' },
-                engine:  { type: 'string', enum: ['claude', 'codex'], description: 'Engine (default: claude)' },
-                model:   { type: 'string', description: 'Model to use' },
+                engine: { type: 'string', enum: ['claude', 'codex'], description: 'Engine (default: claude)' },
+                model: { type: 'string', description: 'Model to use' },
                 baseUrl: { type: 'string', description: 'Custom API endpoint (for proxy)' },
               },
               required: ['name', 'emoji', 'persona'],
             },
           },
-          maxRounds:        { type: 'number', description: 'Max collaboration rounds (default 15)' },
-          agentTimeoutMs:   { type: 'number', description: 'Per-agent timeout in ms (default 1800000)' },
+          maxRounds: { type: 'number', description: 'Max collaboration rounds (default 15)' },
+          agentTimeoutMs: { type: 'number', description: 'Per-agent timeout in ms (default 1800000)' },
           maxTurnsPerAgent: { type: 'number', description: 'Max tool turns per agent per round (default 30)' },
-          maxBudgetUsd:     { type: 'number', description: 'Max API spend per agent (USD)' },
+          maxBudgetUsd: { type: 'number', description: 'Max API spend per agent (USD)' },
         },
         required: ['task', 'projectDir'],
       },
@@ -485,11 +515,12 @@ const plugin = {
 
     api.registerTool({
       name: 'council_inject',
-      description: 'Inject a user message into the next round of a running council. The message will be appended to all agent prompts in the next round.',
+      description:
+        'Inject a user message into the next round of a running council. The message will be appended to all agent prompts in the next round.',
       parameters: {
         type: 'object',
         properties: {
-          id:      { type: 'string', description: 'Council session ID' },
+          id: { type: 'string', description: 'Council session ID' },
           message: { type: 'string', description: 'Message to inject' },
         },
         required: ['id', 'message'],
@@ -503,12 +534,13 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_session_send_to',
-      description: 'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
+      description:
+        'Send a cross-session message from one session to another. If the target is idle, the message is delivered immediately. If busy, it is queued in the inbox for later delivery. Use "*" as target to broadcast to all other sessions.',
       parameters: {
         type: 'object',
         properties: {
-          from:    { type: 'string', description: 'Sender session name' },
-          to:      { type: 'string', description: 'Target session name, or "*" for broadcast' },
+          from: { type: 'string', description: 'Sender session name' },
+          to: { type: 'string', description: 'Target session name, or "*" for broadcast' },
           message: { type: 'string', description: 'Message text' },
           summary: { type: 'string', description: 'Short preview (5-10 words)' },
         },
@@ -516,8 +548,10 @@ const plugin = {
       },
       execute: async (_id, args) => {
         const result = await getManager().sessionSendTo(
-          args.from as string, args.to as string,
-          args.message as string, args.summary as string | undefined,
+          args.from as string,
+          args.to as string,
+          args.message as string,
+          args.summary as string | undefined,
         );
         return { ok: true, ...result };
       },
@@ -531,13 +565,16 @@ const plugin = {
       parameters: {
         type: 'object',
         properties: {
-          name:       { type: 'string', description: 'Session name' },
+          name: { type: 'string', description: 'Session name' },
           unreadOnly: { type: 'boolean', description: 'Only unread messages (default true)' },
         },
         required: ['name'],
       },
       execute: async (_id, args) => {
-        const messages = getManager().sessionInbox(args.name as string, (args.unreadOnly as boolean | undefined) ?? true);
+        const messages = getManager().sessionInbox(
+          args.name as string,
+          (args.unreadOnly as boolean | undefined) ?? true,
+        );
         return { ok: true, count: messages.length, messages };
       },
     });
@@ -546,7 +583,8 @@ const plugin = {
 
     api.registerTool({
       name: 'claude_session_deliver_inbox',
-      description: 'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
+      description:
+        'Deliver all queued inbox messages to an idle session. Call this when a session finishes a task to process waiting messages.',
       parameters: {
         type: 'object',
         properties: { name: { type: 'string', description: 'Session name' } },
@@ -562,13 +600,14 @@ const plugin = {
 
     api.registerTool({
       name: 'ultraplan_start',
-      description: 'Start an Ultraplan session: a dedicated Opus planning session that explores your project for up to 30 minutes and produces a detailed implementation plan. Runs in background.',
+      description:
+        'Start an Ultraplan session: a dedicated Opus planning session that explores your project for up to 30 minutes and produces a detailed implementation plan. Runs in background.',
       parameters: {
         type: 'object',
         properties: {
-          task:    { type: 'string', description: 'What to plan — describe the feature, refactor, or problem' },
-          cwd:     { type: 'string', description: 'Project directory to explore' },
-          model:   { type: 'string', description: 'Model to use (default: opus)' },
+          task: { type: 'string', description: 'What to plan — describe the feature, refactor, or problem' },
+          cwd: { type: 'string', description: 'Project directory to explore' },
+          model: { type: 'string', description: 'Model to use (default: opus)' },
           timeout: { type: 'number', description: 'Timeout in ms (default: 1800000 = 30 min)' },
         },
         required: ['task'],
@@ -604,15 +643,16 @@ const plugin = {
 
     api.registerTool({
       name: 'ultrareview_start',
-      description: 'Start an Ultrareview: a fleet of bug-hunting agents (5-20) that review your codebase from different angles in parallel. Each agent specializes in a different area (security, performance, logic, types, etc.). Runs in background.',
+      description:
+        'Start an Ultrareview: a fleet of bug-hunting agents (5-20) that review your codebase from different angles in parallel. Each agent specializes in a different area (security, performance, logic, types, etc.). Runs in background.',
       parameters: {
         type: 'object',
         properties: {
-          cwd:                 { type: 'string', description: 'Project directory to review' },
-          agentCount:          { type: 'number', description: 'Number of reviewer agents (1-20, default 5)' },
-          maxDurationMinutes:  { type: 'number', description: 'Max review duration in minutes (5-25, default 10)' },
-          model:               { type: 'string', description: 'Model for reviewers (default: session default)' },
-          focus:               { type: 'string', description: 'Review focus area (default: bugs + security + quality)' },
+          cwd: { type: 'string', description: 'Project directory to review' },
+          agentCount: { type: 'number', description: 'Number of reviewer agents (1-20, default 5)' },
+          maxDurationMinutes: { type: 'number', description: 'Max review duration in minutes (5-25, default 10)' },
+          model: { type: 'string', description: 'Model for reviewers (default: session default)' },
+          focus: { type: 'string', description: 'Review focus area (default: bugs + security + quality)' },
         },
         required: ['cwd'],
       },

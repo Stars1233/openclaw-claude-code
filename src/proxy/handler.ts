@@ -19,7 +19,6 @@ import {
   convertStreamOpenAIToAnthropic,
   type AnthropicRequest,
   type OpenAIResponse,
-  isClaudeModel,
 } from './anthropic-adapter.js';
 import { injectThoughtSigs } from './thought-cache.js';
 import type { ProxyConfig } from '../types.js';
@@ -60,7 +59,10 @@ function resolveProviderModel(model: string): { provider: string; apiModel: stri
   // Strip prefixes
   let clean = model;
   for (const prefix of ['anthropic/', 'openai/', 'gemini/', 'google/']) {
-    if (clean.startsWith(prefix)) { clean = clean.slice(prefix.length); break; }
+    if (clean.startsWith(prefix)) {
+      clean = clean.slice(prefix.length);
+      break;
+    }
   }
 
   if (lower.includes('claude') || lower.includes('opus') || lower.includes('sonnet') || lower.includes('haiku')) {
@@ -98,7 +100,7 @@ export function createProxyHandler(config: ProxyConfig | undefined, env: ProxyEn
    */
   return async function handleProxy(req: HttpRequest, res: HttpResponse): Promise<boolean> {
     try {
-      const body = await req.json() as AnthropicRequest;
+      const body = (await req.json()) as AnthropicRequest;
 
       // Determine real model from URL path or request body
       const urlModel = extractRealModel(req.url);
@@ -165,7 +167,10 @@ export function createProxyHandler(config: ProxyConfig | undefined, env: ProxyEn
 // ─── Anthropic Passthrough ───────────────────────────────────────────────────
 
 async function forwardToAnthropic(
-  body: AnthropicRequest, env: ProxyEnv, res: HttpResponse, isStream: boolean,
+  body: AnthropicRequest,
+  env: ProxyEnv,
+  res: HttpResponse,
+  isStream: boolean,
 ): Promise<boolean> {
   const apiKey = env.anthropicApiKey;
   if (!apiKey) {
@@ -211,8 +216,12 @@ async function forwardToAnthropic(
 // ─── Gateway Passthrough ─────────────────────────────────────────────────────
 
 async function forwardToGateway(
-  body: AnthropicRequest, apiModel: string, env: ProxyEnv,
-  res: HttpResponse, isStream: boolean, originalModel: string,
+  body: AnthropicRequest,
+  apiModel: string,
+  env: ProxyEnv,
+  res: HttpResponse,
+  isStream: boolean,
+  originalModel: string,
 ): Promise<boolean> {
   const openaiReq = convertAnthropicToOpenAI(body);
   openaiReq.model = apiModel;
@@ -224,7 +233,7 @@ async function forwardToGateway(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.gatewayKey}`,
+      Authorization: `Bearer ${env.gatewayKey}`,
       'x-openclaw-agent-id': 'claude-code-raw',
     },
     body: JSON.stringify(openaiReq),
@@ -242,7 +251,10 @@ async function forwardToGateway(
     res.flushHeaders?.();
 
     const reader = resp.body?.getReader();
-    if (!reader) { res.end(); return true; }
+    if (!reader) {
+      res.end();
+      return true;
+    }
 
     try {
       const lineStream = readSSELines(reader);
@@ -254,7 +266,7 @@ async function forwardToGateway(
     }
     res.end();
   } else {
-    const data = await resp.json() as OpenAIResponse;
+    const data = (await resp.json()) as OpenAIResponse;
     const anthropicResp = convertOpenAIToAnthropic(data, originalModel);
     res.status(200).json(anthropicResp);
   }
@@ -264,14 +276,17 @@ async function forwardToGateway(
 // ─── Direct Provider ─────────────────────────────────────────────────────────
 
 async function handleNonStreamingResponse(
-  apiUrl: string, apiKey: string, openaiReq: unknown,
-  res: HttpResponse, originalModel: string,
+  apiUrl: string,
+  apiKey: string,
+  openaiReq: unknown,
+  res: HttpResponse,
+  originalModel: string,
 ): Promise<boolean> {
   const resp = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(Object.assign({}, openaiReq as object, { stream: false })),
   });
@@ -282,21 +297,24 @@ async function handleNonStreamingResponse(
     return true;
   }
 
-  const data = await resp.json() as OpenAIResponse;
+  const data = (await resp.json()) as OpenAIResponse;
   const anthropicResp = convertOpenAIToAnthropic(data, originalModel);
   res.status(200).json(anthropicResp);
   return true;
 }
 
 async function handleStreamingResponse(
-  apiUrl: string, apiKey: string, openaiReq: unknown,
-  res: HttpResponse, originalModel: string,
+  apiUrl: string,
+  apiKey: string,
+  openaiReq: unknown,
+  res: HttpResponse,
+  originalModel: string,
 ): Promise<boolean> {
   const resp = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(Object.assign({}, openaiReq as object, { stream: true })),
   });
@@ -312,7 +330,10 @@ async function handleStreamingResponse(
   res.flushHeaders?.();
 
   const reader = resp.body?.getReader();
-  if (!reader) { res.end(); return true; }
+  if (!reader) {
+    res.end();
+    return true;
+  }
 
   try {
     const lineStream = readSSELines(reader);

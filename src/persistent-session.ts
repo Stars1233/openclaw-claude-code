@@ -90,9 +90,15 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     };
   }
 
-  get isReady(): boolean { return this._isReady; }
-  get isPaused(): boolean { return this._isPaused; }
-  get isBusy(): boolean { return this._isBusy; }
+  get isReady(): boolean {
+    return this._isReady;
+  }
+  get isPaused(): boolean {
+    return this._isPaused;
+  }
+  get isBusy(): boolean {
+    return this._isBusy;
+  }
 
   // ─── Start ───────────────────────────────────────────────────────────────
 
@@ -100,12 +106,15 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     const resolvedBin = this.claudeBin;
     const args = [
       '-p',
-      '--input-format', 'stream-json',
-      '--output-format', 'stream-json',
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
       '--replay-user-messages',
       '--verbose',
       '--include-partial-messages',
-      '--permission-mode', this.options.permissionMode || 'acceptEdits',
+      '--permission-mode',
+      this.options.permissionMode || 'acceptEdits',
     ];
 
     // Model alias resolution
@@ -125,8 +134,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     // Model — proxy mode mapping
     if (this.options.model) {
       const CLAUDE_PATTERNS = ['sonnet', 'opus', 'haiku', 'claude-', 'anthropic/', '/claude'];
-      const isClaudeModel = CLAUDE_PATTERNS.some(p =>
-        this.options.model!.includes(p) || this.options.model!.startsWith(p)
+      const isClaudeModel = CLAUDE_PATTERNS.some(
+        (p) => this.options.model!.includes(p) || this.options.model!.startsWith(p),
       );
       if (!isClaudeModel && this.options.baseUrl) {
         this._realModel = this.options.model;
@@ -181,7 +190,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     if (this.options.bare) args.push('--bare');
     if (this.options.worktree) {
       args.push('--worktree');
-      if (typeof this.options.worktree === 'string' && this.options.worktree !== 'true') args.push(this.options.worktree);
+      if (typeof this.options.worktree === 'string' && this.options.worktree !== 'true')
+        args.push(this.options.worktree);
     }
     if (this.options.fallbackModel) args.push('--fallback-model', this.options.fallbackModel);
     if (this.options.jsonSchema) args.push('--json-schema', this.options.jsonSchema);
@@ -241,7 +251,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     });
 
     this.proc.stderr?.on('data', (data: Buffer) => {
-      const sanitized = data.toString()
+      const sanitized = data
+        .toString()
         .replace(/sk-ant-[a-zA-Z0-9_-]+/g, 'sk-ant-***')
         .replace(/ANTHROPIC_API_KEY=[^\s]+/g, 'ANTHROPIC_API_KEY=***')
         .replace(/OPENAI_API_KEY=[^\s]+/g, 'OPENAI_API_KEY=***')
@@ -263,8 +274,14 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Timeout waiting for session ready')), 30_000);
 
-      this.once('ready', () => { clearTimeout(timeout); resolve(this); });
-      this.once('error', (err) => { clearTimeout(timeout); reject(err); });
+      this.once('ready', () => {
+        clearTimeout(timeout);
+        resolve(this);
+      });
+      this.once('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
 
       // Detect premature CLI exit to avoid hanging or marking a dead process as "ready".
       const onCloseBeforeReady = (code: number | null) => {
@@ -292,7 +309,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         if (this.proc?.killed || this.proc?.exitCode !== null) {
           clearTimeout(timeout);
           this.removeListener('close', onCloseBeforeReady);
-          reject(new Error("Claude CLI process crashed immediately upon startup. Fallback timer aborted."));
+          reject(new Error('Claude CLI process crashed immediately upon startup. Fallback timer aborted.'));
           return;
         }
         if (!this._isReady) {
@@ -334,13 +351,17 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
           if (block?.type === 'tool_use') {
             this.stats.toolCalls++;
             const toolEvent = { tool: { name: block.name, input: {} } };
-            try { this._streamCallbacks?.onToolUse?.(toolEvent); } catch {}
+            try {
+              this._streamCallbacks?.onToolUse?.(toolEvent);
+            } catch {}
             this.emit('tool_use', toolEvent);
           }
         } else if (innerType === 'content_block_delta') {
           const delta = (inner as Record<string, unknown>).delta as Record<string, unknown> | undefined;
           if (delta?.type === 'text_delta' && delta.text) {
-            try { this._streamCallbacks?.onText?.(delta.text as string); } catch {}
+            try {
+              this._streamCallbacks?.onText?.(delta.text as string);
+            } catch {}
             this.emit('text', delta.text);
           }
         } else if (innerType === 'message_delta') {
@@ -367,8 +388,15 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
           for (const block of event.message.content) {
             if (block.type === 'tool_use') {
               this.stats.toolCalls++;
-              const toolEvent = { tool: { name: (block as Record<string, unknown>).name, input: (block as Record<string, unknown>).input || {} } };
-              try { this._streamCallbacks?.onToolUse?.(toolEvent); } catch {}
+              const toolEvent = {
+                tool: {
+                  name: (block as Record<string, unknown>).name,
+                  input: (block as Record<string, unknown>).input || {},
+                },
+              };
+              try {
+                this._streamCallbacks?.onToolUse?.(toolEvent);
+              } catch {}
               this.emit('tool_use', toolEvent);
             }
           }
@@ -377,15 +405,22 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
       case 'tool_use':
         this.stats.toolCalls++;
-        try { this._streamCallbacks?.onToolUse?.(event); } catch {}
+        try {
+          this._streamCallbacks?.onToolUse?.(event);
+        } catch {}
         this.emit('tool_use', event);
         break;
 
       case 'tool_result':
-        try { this._streamCallbacks?.onToolResult?.(event); } catch {}
+        try {
+          this._streamCallbacks?.onToolResult?.(event);
+        } catch {}
         if ((event as Record<string, unknown>).is_error || (event as Record<string, unknown>).error) {
           this.stats.toolErrors++;
-          this._fireHook('onToolError', { tool: (event as Record<string, unknown>).tool_use_id, error: (event as Record<string, unknown>).error });
+          this._fireHook('onToolError', {
+            tool: (event as Record<string, unknown>).tool_use_id,
+            error: (event as Record<string, unknown>).error,
+          });
         }
         this.emit('tool_result', event);
         break;
@@ -404,7 +439,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         }
         this.emit('result', event);
         this.emit('turn_complete', event);
-        this._fireHook('onTurnComplete', { text: event.result, usage, stopReason: (event as Record<string, unknown>).stop_reason });
+        this._fireHook('onTurnComplete', {
+          text: event.result,
+          usage,
+          stopReason: (event as Record<string, unknown>).stop_reason,
+        });
 
         const totalTokens = this.stats.tokensIn + this.stats.tokensOut;
         if (totalTokens > 140_000 && !this._contextHighFired) {
@@ -425,7 +464,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
   // ─── Send ────────────────────────────────────────────────────────────────
 
-  async send(message: string | unknown[], options: SessionSendOptions = {}): Promise<TurnResult | { requestId: number; sent: boolean }> {
+  async send(
+    message: string | unknown[],
+    options: SessionSendOptions = {},
+  ): Promise<TurnResult | { requestId: number; sent: boolean }> {
     if (!this._isReady || !this.proc) throw new Error('Session not ready. Call start() first.');
 
     const requestId = ++this.currentRequestId;
@@ -444,9 +486,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       type: 'user',
       message: {
         role: 'user',
-        content: typeof finalMessage === 'string'
-          ? [{ type: 'text', text: finalMessage }]
-          : finalMessage,
+        content: typeof finalMessage === 'string' ? [{ type: 'text', text: finalMessage }] : finalMessage,
       },
     };
 
@@ -476,7 +516,9 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       let allAssistantText = '';
       const toolNames: string[] = [];
 
-      const onText = (chunk: string) => { streamedText += chunk; };
+      const onText = (chunk: string) => {
+        streamedText += chunk;
+      };
       this.on('text', onText);
 
       const onAssistant = (event: StreamEvent) => {
@@ -490,7 +532,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
       const onToolUse = (event: Record<string, unknown>) => {
         const tool = event.tool as Record<string, string> | undefined;
-        toolNames.push(tool?.name || event.name as string || 'unknown');
+        toolNames.push(tool?.name || (event.name as string) || 'unknown');
       };
       this.on('tool_use', onToolUse);
 
@@ -515,7 +557,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         if (settled) return;
         settled = true;
         cleanup();
-        let text = (event as Record<string, unknown>).result as string || streamedText || allAssistantText.trim() || '';
+        let text =
+          ((event as Record<string, unknown>).result as string) || streamedText || allAssistantText.trim() || '';
         if (!text && toolNames.length > 0) {
           const unique = [...new Set(toolNames)];
           text = `[Agent completed ${toolNames.length} tool calls: ${unique.join(', ')}]`;
@@ -537,7 +580,12 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         const text = streamedText || allAssistantText.trim() || '';
         resolve({
           text,
-          event: { type: 'result', result: text, stop_reason: 'process_exit', exit_code: code } as unknown as StreamEvent,
+          event: {
+            type: 'result',
+            result: text,
+            stop_reason: 'process_exit',
+            exit_code: code,
+          } as unknown as StreamEvent,
         });
       };
 
@@ -563,14 +611,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       lastActivity: this.stats.lastActivity,
       // Approximate: assumes a 200k-token context window.
       // Claude Code doesn't expose exact context usage via the JSON protocol,
-      // so this is a best-effort estimate based on cumulative token counts.
-      contextPercent: Math.min(100, Math.round(
-        (this.stats.tokensIn + this.stats.tokensOut) / 200_000 * 100
-      )),
+      // so this is a best-effort heuristic. May overcount because cumulative
+      // token counts include the full conversation history replayed each turn.
+      contextPercent: Math.min(100, Math.round(((this.stats.tokensIn + this.stats.tokensOut) / 200_000) * 100)),
       sessionId: this.sessionId,
-      uptime: this.stats.startTime
-        ? Math.round((Date.now() - new Date(this.stats.startTime).getTime()) / 1000)
-        : 0,
+      uptime: this.stats.startTime ? Math.round((Date.now() - new Date(this.stats.startTime).getTime()) / 1000) : 0,
     };
   }
 
@@ -583,8 +628,12 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     return this.send(msg, { waitForComplete: true, timeout: 60_000 });
   }
 
-  getEffort(): EffortLevel { return this.options.effort || 'auto'; }
-  setEffort(level: EffortLevel): void { this.options.effort = level; }
+  getEffort(): EffortLevel {
+    return this.options.effort || 'auto';
+  }
+  setEffort(level: EffortLevel): void {
+    this.options.effort = level;
+  }
 
   getCost(): CostBreakdown {
     const pricing = getModelPricing(this.options.model);
@@ -610,21 +659,35 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     return alias;
   }
 
-  pause(): void { this._isPaused = true; this.emit('paused', { sessionId: this.sessionId }); }
-  resume(): void { this._isPaused = false; this.emit('resumed', { sessionId: this.sessionId }); }
+  pause(): void {
+    this._isPaused = true;
+    this.emit('paused', { sessionId: this.sessionId });
+  }
+  resume(): void {
+    this._isPaused = false;
+    this.emit('resumed', { sessionId: this.sessionId });
+  }
 
   stop(): void {
     this._fireHook('onStop', { cost: this.getCost(), stats: this.getStats() });
     if (this.proc) {
       const pid = this.proc.pid!;
       this.proc.stdin?.end();
-      try { process.kill(-pid, 'SIGTERM'); } catch {
-        try { this.proc.kill('SIGTERM'); } catch {}
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {
+        try {
+          this.proc.kill('SIGTERM');
+        } catch {}
       }
       const p = this.proc;
       setTimeout(() => {
-        try { process.kill(-pid, 'SIGKILL'); } catch {}
-        try { p.kill('SIGKILL'); } catch {}
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {}
+        try {
+          p.kill('SIGKILL');
+        } catch {}
       }, 3000);
       this.proc = null;
     }
@@ -648,7 +711,9 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     const hooks = this.options.hooks as Record<string, unknown> | undefined;
     const hook = hooks?.[hookName];
     if (typeof hook === 'function') {
-      try { (hook as (d: unknown) => void)(data); } catch {}
+      try {
+        (hook as (d: unknown) => void)(data);
+      } catch {}
     }
     this.emit(`hook:${hookName}`, data);
   }
