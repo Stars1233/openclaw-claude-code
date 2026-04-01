@@ -21,7 +21,7 @@ claude-code-skill session-start [name] [options]
 | Flag | Description |
 |------|-------------|
 | `-d, --cwd <dir>` | Working directory |
-| `-e, --engine <engine>` | Engine: `claude` (default) or `codex` |
+| `-e, --engine <engine>` | Engine: `claude` (default), `codex`, or `gemini` |
 | `-m, --model <model>` | Model name or alias |
 | `--permission-mode <mode>` | `acceptEdits`, `plan`, `auto`, `bypassPermissions` |
 | `--effort <level>` | `low`, `medium`, `high`, `max`, `auto` |

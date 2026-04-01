@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Gemini CLI engine (`engine: 'gemini'`) — third engine alongside Claude Code and Codex. Per-message spawning with `--output-format stream-json` for real token usage tracking. Permission mapping: `bypassPermissions` → `--yolo`, `default` → `--sandbox` (#29)
+- 88 new unit tests: SessionManager (74 tests, #28) and Gemini session (14 tests, #29). Total: 162 tests
+- CLAUDE.md project context file for contributors
+- README architecture diagram (mermaid), test badge, "Why not Claude API" callout
+
+### Fixed
+- Test files no longer compiled to `dist/` or shipped in npm package (tsconfig exclude)
+- `openclaw.plugin.json` contracts.tools updated from 10 → 24 to match actual registered tools
+- `SessionManagerLike` interface in council.ts uses real types instead of `Record<string, unknown>`
+- CI switched from `npm install` to `npm ci` with committed lockfile for reproducible builds
+- docs/cli.md: added SDK-only tools reference table (14 tools without CLI wrappers)
+
 ## [2.3.1] - 2026-04-01
 
 ### Fixed

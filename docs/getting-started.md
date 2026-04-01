@@ -52,6 +52,7 @@ await manager.stopSession('backend-fix');
 - **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
 - **OpenClaw >= 2026.3.0** — for plugin mode (optional)
 - **OpenAI Codex CLI** — `npm install -g @openai/codex` (optional, for codex engine)
+- **Gemini CLI** — `npm install -g @google/gemini-cli` (optional, for gemini engine)
 
 ## Configuration
 
