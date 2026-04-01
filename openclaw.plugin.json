@@ -58,6 +58,10 @@
       }
     }
   },
+  "capabilities": {
+    "childProcess": true,
+    "networkAccess": ["127.0.0.1"]
+  },
   "contracts": {
     "tools": [
       "claude_session_start",

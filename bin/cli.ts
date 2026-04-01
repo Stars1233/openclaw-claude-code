@@ -11,7 +11,9 @@
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
 
-const BASE_URL = process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
+function getBaseUrl(): string {
+  return process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
+}
 
 function getCliVersion(): string {
   try {
@@ -32,10 +34,11 @@ async function api(path: string, method = 'GET', body?: unknown): Promise<Record
   };
   if (body) opts.body = JSON.stringify(body);
   try {
-    const resp = await fetch(`${BASE_URL}${path}`, opts);
+    const base = getBaseUrl();
+    const resp = await fetch(`${base}${path}`, opts);
     return await resp.json() as Record<string, unknown>;
   } catch {
-    return { ok: false, error: `Cannot connect to ${BASE_URL} — is the plugin running?` };
+    return { ok: false, error: `Cannot connect to ${getBaseUrl()} — is the plugin running?` };
   }
 }
 
