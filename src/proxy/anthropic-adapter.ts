@@ -134,7 +134,7 @@ export function convertAnthropicToOpenAI(req: AnthropicRequest): OpenAIRequest {
   if (typeof req.system === 'string') {
     systemText = req.system;
   } else if (Array.isArray(req.system)) {
-    systemText = req.system.map(b => b.text || '').join('\n');
+    systemText = req.system.map((b) => b.text || '').join('\n');
   }
 
   // 2. Convert messages
@@ -174,7 +174,7 @@ export function convertAnthropicToOpenAI(req: AnthropicRequest): OpenAIRequest {
 
   // 8. Tools
   if (req.tools?.length) {
-    openaiReq.tools = req.tools.map(tool => {
+    openaiReq.tools = req.tools.map((tool) => {
       let schema = tool.input_schema || {};
       if (isGemini) schema = cleanGeminiSchema(schema) as Record<string, unknown>;
       return {
@@ -232,9 +232,7 @@ function convertMessages(messages: AnthropicMessage[]): OpenAIMessage[] {
           },
         });
       } else if (block.type === 'tool_result') {
-        const content = typeof block.content === 'string'
-          ? block.content
-          : JSON.stringify(block.content || '');
+        const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content || '');
         toolResults.push({
           role: 'tool',
           tool_call_id: block.tool_use_id || '',
@@ -303,10 +301,7 @@ function normalizeMessagesForOpenAI(messages: OpenAIMessage[]): OpenAIMessage[] 
 
 // ─── OpenAI → Anthropic Response Conversion ──────────────────────────────────
 
-export function convertOpenAIToAnthropic(
-  resp: OpenAIResponse,
-  originalModel: string,
-): AnthropicResponse {
+export function convertOpenAIToAnthropic(resp: OpenAIResponse, originalModel: string): AnthropicResponse {
   const choice = resp.choices?.[0];
   const message = choice?.message;
 
@@ -322,7 +317,11 @@ export function convertOpenAIToAnthropic(
     for (const tc of message.tool_calls) {
       let args: unknown = {};
       if (typeof tc.function.arguments === 'string') {
-        try { args = JSON.parse(tc.function.arguments); } catch { args = { raw: tc.function.arguments }; }
+        try {
+          args = JSON.parse(tc.function.arguments);
+        } catch {
+          args = { raw: tc.function.arguments };
+        }
       } else {
         args = tc.function.arguments;
       }
@@ -348,7 +347,7 @@ export function convertOpenAIToAnthropic(
   else if (finishReason === 'stop') stopReason = 'end_turn';
 
   // Fix: force tool_use if response has tool blocks but stop was "end_turn"
-  const hasToolUse = content.some(c => c.type === 'tool_use');
+  const hasToolUse = content.some((c) => c.type === 'tool_use');
   if (stopReason === 'end_turn' && hasToolUse) stopReason = 'tool_use';
 
   return {
@@ -383,24 +382,28 @@ export async function* convertStreamOpenAIToAnthropic(
   yield sseEvent('message_start', {
     type: 'message_start',
     message: {
-      id: msgId, type: 'message', model: originalModel, role: 'assistant',
-      content: [], stop_reason: null, stop_sequence: null,
+      id: msgId,
+      type: 'message',
+      model: originalModel,
+      role: 'assistant',
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
       usage: { input_tokens: 0, output_tokens: 0 },
     },
   });
 
   // Emit initial text block
   yield sseEvent('content_block_start', {
-    type: 'content_block_start', index: 0,
+    type: 'content_block_start',
+    index: 0,
     content_block: { type: 'text', text: '' },
   });
 
-  let accumulatedText = '';
   let textBlockOpen = true;
   let lastToolIndex = 0; // anthropic index (0 = text, 1+ = tools)
   let currentToolCallId: string | null = null;
   let finishReason: string | null = null;
-  let promptTokens = 0;
   let completionTokens = 0;
 
   for await (const line of stream) {
@@ -409,14 +412,15 @@ export async function* convertStreamOpenAIToAnthropic(
     let chunk: Record<string, unknown>;
     try {
       chunk = JSON.parse(line.slice(6));
-    } catch { continue; }
+    } catch {
+      continue;
+    }
 
     const choices = chunk.choices as Array<Record<string, unknown>> | undefined;
     if (!choices?.length) {
       // Usage chunk (OpenAI sends usage in final chunk)
       const usage = chunk.usage as Record<string, number> | undefined;
       if (usage) {
-        promptTokens = usage.prompt_tokens || 0;
         completionTokens = usage.completion_tokens || 0;
       }
       continue;
@@ -424,19 +428,19 @@ export async function* convertStreamOpenAIToAnthropic(
 
     const delta = choices[0].delta as Record<string, unknown> | undefined;
     if (!delta) {
-      finishReason = choices[0].finish_reason as string || finishReason;
+      finishReason = (choices[0].finish_reason as string) || finishReason;
       continue;
     }
 
-    finishReason = choices[0].finish_reason as string || finishReason;
+    finishReason = (choices[0].finish_reason as string) || finishReason;
 
     // Text delta
     const textContent = delta.content as string | undefined;
     if (textContent) {
-      accumulatedText += textContent;
       if (textBlockOpen) {
         yield sseEvent('content_block_delta', {
-          type: 'content_block_delta', index: 0,
+          type: 'content_block_delta',
+          index: 0,
           delta: { type: 'text_delta', text: textContent },
         });
       }
@@ -466,12 +470,13 @@ export async function* convertStreamOpenAIToAnthropic(
 
           // Cache thought signature if present (Gemini)
           const extra = tc.extra_content as Record<string, Record<string, string>> | undefined;
-          const sig = extra?.google?.thought_signature || tc.thought_signature as string | undefined;
+          const sig = extra?.google?.thought_signature || (tc.thought_signature as string | undefined);
           if (sig && tcId) cacheThoughtSig(tcId, sig);
 
           // Start new tool block
           yield sseEvent('content_block_start', {
-            type: 'content_block_start', index: lastToolIndex,
+            type: 'content_block_start',
+            index: lastToolIndex,
             content_block: { type: 'tool_use', id: tcId, name: fn?.name || '', input: {} },
           });
         }
@@ -479,7 +484,8 @@ export async function* convertStreamOpenAIToAnthropic(
         // Tool arguments delta
         if (fn?.arguments) {
           yield sseEvent('content_block_delta', {
-            type: 'content_block_delta', index: lastToolIndex,
+            type: 'content_block_delta',
+            index: lastToolIndex,
             delta: { type: 'input_json_delta', partial_json: fn.arguments },
           });
         }

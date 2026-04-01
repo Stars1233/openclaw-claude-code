@@ -23,10 +23,11 @@ function getPluginVersion(): string {
       }
       dir = path.dirname(dir);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return 'unknown';
 }
-
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
@@ -51,8 +52,8 @@ function loadPersistedSessions(): Map<string, PersistedSession> {
     const arr: PersistedSession[] = JSON.parse(raw);
     const now = Date.now();
     // Filter out entries older than disk TTL
-    const valid = arr.filter(s => now - s.lastActivity < PERSIST_DISK_TTL_MS);
-    return new Map(valid.map(s => [s.name, s]));
+    const valid = arr.filter((s) => now - s.lastActivity < PERSIST_DISK_TTL_MS);
+    return new Map(valid.map((s) => [s.name, s]));
   } catch {
     return new Map();
   }
@@ -101,7 +102,10 @@ function makeDebounced(fn: () => void, ms: number): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   return () => {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { timer = null; fn(); }, ms);
+    timer = setTimeout(() => {
+      timer = null;
+      fn();
+    }, ms);
   };
 }
 
@@ -125,6 +129,7 @@ import {
   type UltraplanResult,
   type UltrareviewResult,
   MODEL_ALIASES,
+  overrideModelPricing,
 } from './types.js';
 import { Council } from './council.js';
 
@@ -168,13 +173,15 @@ export class SessionManager {
       sessionTtlMinutes: config?.sessionTtlMinutes || 120,
     };
 
+    // Apply pricing overrides if provided
+    if (config?.pricingOverrides) {
+      overrideModelPricing(config.pricingOverrides);
+    }
+
     // Load persisted session registry from disk
     this.persistedSessions = loadPersistedSessions();
     // Debounced async writer — at most one write per 5 seconds on hot paths
-    this._debouncedSave = makeDebounced(
-      () => savePersistedSessionsAsync(this.persistedSessions),
-      5000,
-    );
+    this._debouncedSave = makeDebounced(() => savePersistedSessionsAsync(this.persistedSessions), 5000);
 
     // Start TTL cleanup timer
     this.cleanupTimer = setInterval(() => this._cleanupIdleSessions(), 60_000);
@@ -203,7 +210,10 @@ export class SessionManager {
     }
   }
 
-  private async _doStartSession(name: string, config: Partial<SessionConfig> & { name?: string }): Promise<SessionInfo> {
+  private async _doStartSession(
+    name: string,
+    config: Partial<SessionConfig> & { name?: string },
+  ): Promise<SessionInfo> {
     if (this.sessions.size >= this.pluginConfig.maxConcurrentSessions) {
       throw new Error(`Max concurrent sessions (${this.pluginConfig.maxConcurrentSessions}) reached`);
     }
@@ -308,9 +318,7 @@ export class SessionManager {
   }
 
   listSessions(): SessionInfo[] {
-    return Array.from(this.sessions.entries()).map(
-      ([name, managed]) => this._toSessionInfo(name, managed)
-    );
+    return Array.from(this.sessions.entries()).map(([name, managed]) => this._toSessionInfo(name, managed));
   }
 
   listPersistedSessions(): PersistedSession[] {
@@ -327,14 +335,18 @@ export class SessionManager {
 
   // ─── Session Operations ────────────────────────────────────────────────
 
-  async grepSession(name: string, pattern: string, limit = 50): Promise<Array<{ time: string; type: string; content: string }>> {
+  async grepSession(
+    name: string,
+    pattern: string,
+    limit = 50,
+  ): Promise<Array<{ time: string; type: string; content: string }>> {
     const managed = this._getSession(name);
     const history = managed.session.getHistory(500);
     const regex = new RegExp(pattern, 'i');
     return history
-      .filter(ev => regex.test(JSON.stringify(ev)))
+      .filter((ev) => regex.test(JSON.stringify(ev)))
       .slice(0, limit)
-      .map(ev => ({
+      .map((ev) => ({
         time: ev.time,
         type: ev.type,
         content: JSON.stringify(ev.event),
@@ -378,7 +390,9 @@ export class SessionManager {
 
     // Busy guard — don't restart mid-message
     if (managed.session.isBusy) {
-      throw new Error(`Session '${name}' is currently processing a message. Wait for it to finish before switching model.`);
+      throw new Error(
+        `Session '${name}' is currently processing a message. Wait for it to finish before switching model.`,
+      );
     }
 
     const sessionId = managed.claudeSessionId || managed.session.sessionId;
@@ -387,9 +401,11 @@ export class SessionManager {
     // Validate model — must be a known alias or contain a recognisable pattern
     const resolvedModel = this._resolveModel(model, managed.config.modelOverrides);
     const knownPatterns = ['claude-', 'gemini-', 'gpt-', 'anthropic/', 'google/', 'openai/'];
-    const looksValid = knownPatterns.some(p => resolvedModel.includes(p));
+    const looksValid = knownPatterns.some((p) => resolvedModel.includes(p));
     if (!looksValid) {
-      throw new Error(`Unknown model '${model}' (resolved: '${resolvedModel}'). Use a known alias (opus, sonnet, haiku, gemini-pro, etc.) or a full provider/model string.`);
+      throw new Error(
+        `Unknown model '${model}' (resolved: '${resolvedModel}'). Use a known alias (opus, sonnet, haiku, gemini-pro, etc.) or a full provider/model string.`,
+      );
     }
 
     const oldConfig = { ...managed.config };
@@ -440,7 +456,9 @@ export class SessionManager {
 
     // Busy guard
     if (managed.session.isBusy) {
-      throw new Error(`Session '${name}' is currently processing a message. Wait for it to finish before updating tools.`);
+      throw new Error(
+        `Session '${name}' is currently processing a message. Wait for it to finish before updating tools.`,
+      );
     }
 
     const sessionId = managed.claudeSessionId || managed.session.sessionId;
@@ -462,8 +480,8 @@ export class SessionManager {
     // Remove specific tools if requested
     if (opts.removeTools?.length) {
       const removeSet = new Set(opts.removeTools);
-      if (newAllowed) newAllowed = newAllowed.filter(t => !removeSet.has(t));
-      if (newDisallowed) newDisallowed = newDisallowed.filter(t => !removeSet.has(t));
+      if (newAllowed) newAllowed = newAllowed.filter((t) => !removeSet.has(t));
+      if (newDisallowed) newDisallowed = newDisallowed.filter((t) => !removeSet.has(t));
     }
 
     managed.session.stop();
@@ -500,8 +518,8 @@ export class SessionManager {
     const globalDir = path.join(os.homedir(), '.claude', 'agents');
     const project = this._listMdFiles(projectDir);
     const global = this._listMdFiles(globalDir);
-    const seen = new Set(project.map(a => a.name));
-    return [...project, ...global.filter(a => !seen.has(a.name))];
+    const seen = new Set(project.map((a) => a.name));
+    return [...project, ...global.filter((a) => !seen.has(a.name))];
   }
 
   createAgent(name: string, cwd?: string, description?: string, prompt?: string): string {
@@ -514,10 +532,7 @@ export class SessionManager {
   }
 
   listSkills(cwd?: string): SkillInfo[] {
-    const dirs = [
-      path.join(cwd || os.homedir(), '.claude', 'skills'),
-      path.join(os.homedir(), '.claude', 'skills'),
-    ];
+    const dirs = [path.join(cwd || os.homedir(), '.claude', 'skills'), path.join(os.homedir(), '.claude', 'skills')];
     const all: SkillInfo[] = [];
     const seen = new Set<string>();
     for (const dir of dirs) {
@@ -551,15 +566,12 @@ export class SessionManager {
   }
 
   listRules(cwd?: string): RuleInfo[] {
-    const dirs = [
-      path.join(cwd || os.homedir(), '.claude', 'rules'),
-      path.join(os.homedir(), '.claude', 'rules'),
-    ];
+    const dirs = [path.join(cwd || os.homedir(), '.claude', 'rules'), path.join(os.homedir(), '.claude', 'rules')];
     const all: RuleInfo[] = [];
     const seen = new Set<string>();
     for (const dir of dirs) {
       if (!fs.existsSync(dir)) continue;
-      for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md'))) {
+      for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.md'))) {
         const name = f.replace('.md', '');
         if (seen.has(name)) continue;
         seen.add(name);
@@ -568,7 +580,8 @@ export class SessionManager {
         const pathsMatch = content.match(/^---\n[\s\S]*?paths:\s*(.+)/m);
         const ifMatch = content.match(/^---\n[\s\S]*?if:\s*(.+)/m);
         all.push({
-          name, file: f,
+          name,
+          file: f,
           description: descMatch?.[1]?.trim() || '',
           paths: pathsMatch?.[1]?.trim() || '',
           condition: ifMatch?.[1]?.trim() || '',
@@ -578,7 +591,11 @@ export class SessionManager {
     return all;
   }
 
-  createRule(name: string, cwd?: string, opts?: { description?: string; content?: string; paths?: string; condition?: string }): string {
+  createRule(
+    name: string,
+    cwd?: string,
+    opts?: { description?: string; content?: string; paths?: string; condition?: string },
+  ): string {
     const dir = path.join(cwd || os.homedir(), '.claude', 'rules');
     fs.mkdirSync(dir, { recursive: true });
     const filePath = path.join(dir, `${name}.md`);
@@ -660,6 +677,16 @@ export class SessionManager {
 
   // ─── Shutdown ──────────────────────────────────────────────────────────
 
+  /**
+   * Gracefully shut down the session manager.
+   *
+   * 1. Cancels the periodic TTL cleanup timer
+   * 2. Stops all ultrareview polling intervals
+   * 3. Sends SIGTERM to all active session child processes
+   * 4. Persists final session registry to disk
+   *
+   * After shutdown(), no new sessions can be started. Idempotent.
+   */
   async shutdown(): Promise<void> {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
@@ -670,7 +697,9 @@ export class SessionManager {
     this.ultrareviewPollers.clear();
     // Stop all sessions
     for (const [name, managed] of this.sessions) {
-      try { managed.session.stop(); } catch {}
+      try {
+        managed.session.stop();
+      } catch {}
       console.log(`[SessionManager] Stopped session: ${name}`);
     }
     this.sessions.clear();
@@ -722,9 +751,10 @@ export class SessionManager {
 
   private _listMdFiles(dir: string): AgentInfo[] {
     if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => {
         const content = fs.readFileSync(path.join(dir, f), 'utf8');
         const match = content.match(/^---\n[\s\S]*?description:\s*(.+)/m);
         return { name: f.replace('.md', ''), file: f, description: match?.[1]?.trim() || '' };
@@ -754,19 +784,24 @@ export class SessionManager {
     this.councils.set(initialSession.id, council);
 
     // Run in background — callers poll via councilStatus()
-    council.run().then(() => {
-      // Keep completed council queryable; schedule cleanup after TTL
-      this._scheduleCouncilCleanup(initialSession.id);
-    }).catch((err) => {
-      console.error(`[SessionManager] Council ${initialSession.id} failed:`, err);
-      this._scheduleCouncilCleanup(initialSession.id);
-    });
+    council
+      .run()
+      .then(() => {
+        // Keep completed council queryable; schedule cleanup after TTL
+        this._scheduleCouncilCleanup(initialSession.id);
+      })
+      .catch((err) => {
+        console.error(`[SessionManager] Council ${initialSession.id} failed:`, err);
+        this._scheduleCouncilCleanup(initialSession.id);
+      });
 
     return initialSession;
   }
 
   private _scheduleCouncilCleanup(id: string): void {
-    setTimeout(() => { this.councils.delete(id); }, SessionManager.COUNCIL_RESULT_TTL_MS);
+    setTimeout(() => {
+      this.councils.delete(id);
+    }, SessionManager.COUNCIL_RESULT_TTL_MS);
   }
 
   councilStatus(id: string): CouncilSession | undefined {
@@ -801,7 +836,12 @@ export class SessionManager {
    * If the target is idle, the message is delivered as a user turn.
    * If the target is busy, it's queued in the inbox for later delivery.
    */
-  async sessionSendTo(from: string, to: string, message: string, summary?: string): Promise<{ delivered: boolean; queued: boolean }> {
+  async sessionSendTo(
+    from: string,
+    to: string,
+    message: string,
+    summary?: string,
+  ): Promise<{ delivered: boolean; queued: boolean }> {
     // Validate both sessions exist
     if (!this.sessions.has(from)) throw new Error(`Sender session '${from}' not found`);
     if (to !== '*' && !this.sessions.has(to)) throw new Error(`Target session '${to}' not found`);
@@ -854,7 +894,7 @@ export class SessionManager {
     if (!this.inboxes.has(sessionName)) this.inboxes.set(sessionName, []);
     const inbox = this.inboxes.get(sessionName)!;
     if (inbox.length >= SessionManager.MAX_INBOX_SIZE) {
-      const readIdx = inbox.findIndex(m => m.read);
+      const readIdx = inbox.findIndex((m) => m.read);
       if (readIdx >= 0) inbox.splice(readIdx, 1);
       else inbox.shift(); // drop oldest unread as last resort
     }
@@ -865,7 +905,7 @@ export class SessionManager {
   /** Read inbox messages for a session */
   sessionInbox(name: string, unreadOnly = true): InboxMessage[] {
     const inbox = this.inboxes.get(name) || [];
-    return unreadOnly ? inbox.filter(m => !m.read) : inbox;
+    return unreadOnly ? inbox.filter((m) => !m.read) : inbox;
   }
 
   /** Deliver all queued messages to an idle session, then clear */
@@ -874,11 +914,11 @@ export class SessionManager {
     const inbox = this.inboxes.get(name);
     if (!inbox || inbox.length === 0) return 0;
 
-    const unread = inbox.filter(m => !m.read);
+    const unread = inbox.filter((m) => !m.read);
     if (unread.length === 0) return 0;
 
     // Format all unread messages into one delivery
-    const formatted = unread.map(m => this._wrapCrossSessionMessage(m)).join('\n\n');
+    const formatted = unread.map((m) => this._wrapCrossSessionMessage(m)).join('\n\n');
 
     await managed.session.send(formatted, { waitForComplete: false });
     for (const m of unread) m.read = true;
@@ -906,14 +946,14 @@ export class SessionManager {
 
     // Run in background
     this._runUltraplan(id, sessionName, task, opts?.model || 'opus', opts?.cwd || process.cwd(), timeout)
-      .catch(err => {
+      .catch((err) => {
         result.status = 'error';
         result.error = (err as Error).message;
         result.endTime = new Date().toISOString();
       })
       .finally(() => {
         // Cleanup session
-        this.stopSession(sessionName).catch(err => {
+        this.stopSession(sessionName).catch((err) => {
           console.error(`[SessionManager] Failed to stop ultraplan session '${sessionName}':`, err);
         });
         setTimeout(() => this.ultraplans.delete(id), SessionManager.ULTRAPLAN_RESULT_TTL_MS);
@@ -922,7 +962,14 @@ export class SessionManager {
     return result;
   }
 
-  private async _runUltraplan(id: string, sessionName: string, task: string, model: string, cwd: string, timeout: number): Promise<void> {
+  private async _runUltraplan(
+    id: string,
+    sessionName: string,
+    task: string,
+    model: string,
+    cwd: string,
+    timeout: number,
+  ): Promise<void> {
     const result = this.ultraplans.get(id)!;
 
     await this.startSession({
@@ -931,7 +978,8 @@ export class SessionManager {
       model,
       permissionMode: 'plan',
       effort: 'max',
-      appendSystemPrompt: 'You are in ultraplan mode. Explore the project thoroughly, analyze feasibility, and produce a detailed, actionable plan. Do NOT write code — plan only. Output your final plan in a clear markdown format.',
+      appendSystemPrompt:
+        'You are in ultraplan mode. Explore the project thoroughly, analyze feasibility, and produce a detailed, actionable plan. Do NOT write code — plan only. Output your final plan in a clear markdown format.',
     });
 
     const planPrompt = `# Ultraplan Task\n\n${task}\n\nExplore the project, understand the codebase, analyze feasibility, and produce a comprehensive implementation plan. Take your time (up to 30 minutes). Be thorough.`;
@@ -953,7 +1001,10 @@ export class SessionManager {
   private ultrareviewPollers = new Map<string, ReturnType<typeof setInterval>>();
   private static ULTRAREVIEW_RESULT_TTL_MS = 30 * 60 * 1000;
 
-  ultrareviewStart(cwd: string, opts?: { agentCount?: number; maxDurationMinutes?: number; model?: string; focus?: string }): UltrareviewResult {
+  ultrareviewStart(
+    cwd: string,
+    opts?: { agentCount?: number; maxDurationMinutes?: number; model?: string; focus?: string },
+  ): UltrareviewResult {
     const id = `ultrareview-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const agentCount = Math.min(20, Math.max(1, opts?.agentCount || 5));
 
@@ -968,29 +1019,129 @@ export class SessionManager {
 
     // Build reviewer agents
     const reviewAngles = [
-      { name: 'SecurityReviewer', emoji: '🔒', persona: 'You are a security expert. Focus on: injection vulnerabilities, auth flaws, data exposure, OWASP top 10, secrets in code.' },
-      { name: 'LogicReviewer', emoji: '🧠', persona: 'You are a logic analyst. Focus on: off-by-one errors, race conditions, null/undefined handling, edge cases, incorrect assumptions.' },
-      { name: 'PerformanceReviewer', emoji: '⚡', persona: 'You are a performance engineer. Focus on: O(n^2) loops, memory leaks, unnecessary allocations, missing caching, N+1 queries.' },
-      { name: 'APIReviewer', emoji: '🔌', persona: 'You are an API design reviewer. Focus on: inconsistent interfaces, missing validation, error handling gaps, backwards compatibility.' },
-      { name: 'TestReviewer', emoji: '🧪', persona: 'You are a test coverage analyst. Focus on: untested code paths, missing edge case tests, flaky test patterns, assertion quality.' },
-      { name: 'TypeReviewer', emoji: '📐', persona: 'You are a type safety reviewer. Focus on: any casts, unsafe assertions, missing null checks, generic misuse, type narrowing gaps.' },
-      { name: 'ConcurrencyReviewer', emoji: '🔀', persona: 'You are a concurrency expert. Focus on: race conditions, deadlocks, shared state mutations, async error handling, promise leaks.' },
-      { name: 'ErrorReviewer', emoji: '💥', persona: 'You are an error handling reviewer. Focus on: swallowed errors, missing try/catch, unhelpful error messages, crash-on-startup paths.' },
-      { name: 'DependencyReviewer', emoji: '📦', persona: 'You are a dependency auditor. Focus on: outdated packages, known CVEs, unnecessary dependencies, license issues.' },
-      { name: 'ReadabilityReviewer', emoji: '📖', persona: 'You are a readability reviewer. Focus on: unclear naming, complex functions, missing context, dead code, confusing control flow.' },
-      { name: 'DataReviewer', emoji: '💾', persona: 'You are a data integrity reviewer. Focus on: data validation, schema mismatches, migration issues, encoding problems, data loss paths.' },
-      { name: 'ConfigReviewer', emoji: '⚙️', persona: 'You are a configuration reviewer. Focus on: hardcoded values, missing env vars, insecure defaults, missing fallbacks.' },
-      { name: 'ScalabilityReviewer', emoji: '📈', persona: 'You are a scalability reviewer. Focus on: single points of failure, stateful bottlenecks, missing pagination, unbounded growth.' },
-      { name: 'DocReviewer', emoji: '📝', persona: 'You are a documentation reviewer. Focus on: outdated docs, missing API docs, misleading comments, undocumented behavior.' },
-      { name: 'A11yReviewer', emoji: '♿', persona: 'You are an accessibility reviewer. Focus on: missing ARIA labels, keyboard navigation, color contrast, screen reader support.' },
-      { name: 'I18nReviewer', emoji: '🌍', persona: 'You are an i18n reviewer. Focus on: hardcoded strings, locale handling, date/number formatting, RTL support.' },
-      { name: 'NetworkReviewer', emoji: '🌐', persona: 'You are a network reviewer. Focus on: missing timeouts, retry logic, connection pooling, request size limits.' },
-      { name: 'AuthReviewer', emoji: '🔑', persona: 'You are an auth reviewer. Focus on: token handling, session management, CSRF protection, permission checks.' },
-      { name: 'CryptoReviewer', emoji: '🔐', persona: 'You are a cryptography reviewer. Focus on: weak algorithms, key management, random number generation, hash collisions.' },
-      { name: 'MemoryReviewer', emoji: '🧹', persona: 'You are a memory reviewer. Focus on: memory leaks, circular references, large object retention, stream handling.' },
+      {
+        name: 'SecurityReviewer',
+        emoji: '🔒',
+        persona:
+          'You are a security expert. Focus on: injection vulnerabilities, auth flaws, data exposure, OWASP top 10, secrets in code.',
+      },
+      {
+        name: 'LogicReviewer',
+        emoji: '🧠',
+        persona:
+          'You are a logic analyst. Focus on: off-by-one errors, race conditions, null/undefined handling, edge cases, incorrect assumptions.',
+      },
+      {
+        name: 'PerformanceReviewer',
+        emoji: '⚡',
+        persona:
+          'You are a performance engineer. Focus on: O(n^2) loops, memory leaks, unnecessary allocations, missing caching, N+1 queries.',
+      },
+      {
+        name: 'APIReviewer',
+        emoji: '🔌',
+        persona:
+          'You are an API design reviewer. Focus on: inconsistent interfaces, missing validation, error handling gaps, backwards compatibility.',
+      },
+      {
+        name: 'TestReviewer',
+        emoji: '🧪',
+        persona:
+          'You are a test coverage analyst. Focus on: untested code paths, missing edge case tests, flaky test patterns, assertion quality.',
+      },
+      {
+        name: 'TypeReviewer',
+        emoji: '📐',
+        persona:
+          'You are a type safety reviewer. Focus on: any casts, unsafe assertions, missing null checks, generic misuse, type narrowing gaps.',
+      },
+      {
+        name: 'ConcurrencyReviewer',
+        emoji: '🔀',
+        persona:
+          'You are a concurrency expert. Focus on: race conditions, deadlocks, shared state mutations, async error handling, promise leaks.',
+      },
+      {
+        name: 'ErrorReviewer',
+        emoji: '💥',
+        persona:
+          'You are an error handling reviewer. Focus on: swallowed errors, missing try/catch, unhelpful error messages, crash-on-startup paths.',
+      },
+      {
+        name: 'DependencyReviewer',
+        emoji: '📦',
+        persona:
+          'You are a dependency auditor. Focus on: outdated packages, known CVEs, unnecessary dependencies, license issues.',
+      },
+      {
+        name: 'ReadabilityReviewer',
+        emoji: '📖',
+        persona:
+          'You are a readability reviewer. Focus on: unclear naming, complex functions, missing context, dead code, confusing control flow.',
+      },
+      {
+        name: 'DataReviewer',
+        emoji: '💾',
+        persona:
+          'You are a data integrity reviewer. Focus on: data validation, schema mismatches, migration issues, encoding problems, data loss paths.',
+      },
+      {
+        name: 'ConfigReviewer',
+        emoji: '⚙️',
+        persona:
+          'You are a configuration reviewer. Focus on: hardcoded values, missing env vars, insecure defaults, missing fallbacks.',
+      },
+      {
+        name: 'ScalabilityReviewer',
+        emoji: '📈',
+        persona:
+          'You are a scalability reviewer. Focus on: single points of failure, stateful bottlenecks, missing pagination, unbounded growth.',
+      },
+      {
+        name: 'DocReviewer',
+        emoji: '📝',
+        persona:
+          'You are a documentation reviewer. Focus on: outdated docs, missing API docs, misleading comments, undocumented behavior.',
+      },
+      {
+        name: 'A11yReviewer',
+        emoji: '♿',
+        persona:
+          'You are an accessibility reviewer. Focus on: missing ARIA labels, keyboard navigation, color contrast, screen reader support.',
+      },
+      {
+        name: 'I18nReviewer',
+        emoji: '🌍',
+        persona:
+          'You are an i18n reviewer. Focus on: hardcoded strings, locale handling, date/number formatting, RTL support.',
+      },
+      {
+        name: 'NetworkReviewer',
+        emoji: '🌐',
+        persona:
+          'You are a network reviewer. Focus on: missing timeouts, retry logic, connection pooling, request size limits.',
+      },
+      {
+        name: 'AuthReviewer',
+        emoji: '🔑',
+        persona:
+          'You are an auth reviewer. Focus on: token handling, session management, CSRF protection, permission checks.',
+      },
+      {
+        name: 'CryptoReviewer',
+        emoji: '🔐',
+        persona:
+          'You are a cryptography reviewer. Focus on: weak algorithms, key management, random number generation, hash collisions.',
+      },
+      {
+        name: 'MemoryReviewer',
+        emoji: '🧹',
+        persona:
+          'You are a memory reviewer. Focus on: memory leaks, circular references, large object retention, stream handling.',
+      },
     ];
 
-    const agents = reviewAngles.slice(0, agentCount).map(a => ({
+    const agents = reviewAngles.slice(0, agentCount).map((a) => ({
       ...a,
       model: opts?.model,
     }));
@@ -1027,9 +1178,7 @@ export class SessionManager {
 
         // Synthesize findings from all agent responses
         if (status.responses.length > 0) {
-          result.findings = status.responses
-            .map(r => `## ${r.agent}\n\n${r.content}`)
-            .join('\n\n---\n\n');
+          result.findings = status.responses.map((r) => `## ${r.agent}\n\n${r.content}`).join('\n\n---\n\n');
         }
 
         setTimeout(() => this.ultrareviews.delete(id), SessionManager.ULTRAREVIEW_RESULT_TTL_MS);
@@ -1054,7 +1203,9 @@ export class SessionManager {
     for (const [name, managed] of this.sessions) {
       if (now - managed.lastActivity > ttlMs) {
         console.log(`[SessionManager] Cleaning up idle in-memory session: ${name}`);
-        try { managed.session.stop(); } catch {}
+        try {
+          managed.session.stop();
+        } catch {}
         this.sessions.delete(name);
         // NOTE: do NOT delete from persistedSessions — idle cleanup is
         // in-memory only. Persisted entries survive for PERSIST_DISK_TTL_MS

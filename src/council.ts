@@ -47,7 +47,7 @@ const MIN_COMPLETE_RESPONSE_LENGTH = 100;
 const FOLLOWUP_MAX_RETRIES = 2;
 const HISTORY_PREVIEW_CHARS = 1500;
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ─── Git Utilities ──────────────────────────────────────────────────────────
 
@@ -63,27 +63,34 @@ function spawnAsync(
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    child.stdout.on('data', (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr.on('data', (d: Buffer) => {
+      stderr += d.toString();
+    });
     const timer = opts.timeout
-      ? setTimeout(() => { child.kill('SIGTERM'); reject(new Error('spawn timeout')); }, opts.timeout)
+      ? setTimeout(() => {
+          child.kill('SIGTERM');
+          reject(new Error('spawn timeout'));
+        }, opts.timeout)
       : null;
     child.on('close', (code) => {
       if (timer) clearTimeout(timer);
       if (code !== 0) reject(new Error(`${cmd} exited with code ${code}: ${stderr.trim()}`));
       else resolve({ stdout, stderr });
     });
-    child.on('error', (err) => { if (timer) clearTimeout(timer); reject(err); });
+    child.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 
 const VALID_AGENT_NAME = /^[a-zA-Z0-9_-]+$/;
 
 /** Set up git worktrees — one isolated directory per agent */
-async function setupWorktrees(
-  projectDir: string,
-  agents: AgentPersona[],
-): Promise<Map<string, string>> {
+async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promise<Map<string, string>> {
   const worktreeMap = new Map<string, string>();
 
   // Validate agent names before using them in git branch names
@@ -99,22 +106,28 @@ async function setupWorktrees(
 
   // Ensure git repo
   const isGit = await spawnAsync('git', ['-C', projectDir, 'rev-parse', '--git-dir'], { timeout: 5000 })
-    .then(() => true).catch(() => false);
+    .then(() => true)
+    .catch(() => false);
   if (!isGit) {
     await spawnAsync('git', ['-C', projectDir, 'init'], { timeout: 5000 });
   }
 
   // Git user config
-  await spawnAsync('git', ['-C', projectDir, 'config', 'user.email', 'council@openclaw'], { timeout: 5000 }).catch((err) => {
+  await spawnAsync('git', ['-C', projectDir, 'config', '--local', 'user.email', 'council@openclaw'], {
+    timeout: 5000,
+  }).catch((err) => {
     console.error('[Council] Failed to set git user.email:', err.message);
   });
-  await spawnAsync('git', ['-C', projectDir, 'config', 'user.name', 'Council'], { timeout: 5000 }).catch((err) => {
-    console.error('[Council] Failed to set git user.name:', err.message);
-  });
+  await spawnAsync('git', ['-C', projectDir, 'config', '--local', 'user.name', 'Council'], { timeout: 5000 }).catch(
+    (err) => {
+      console.error('[Council] Failed to set git user.name:', err.message);
+    },
+  );
 
   // Ensure at least one commit
   const hasCommit = await spawnAsync('git', ['-C', projectDir, 'rev-parse', 'HEAD'], { timeout: 5000 })
-    .then(() => true).catch(() => false);
+    .then(() => true)
+    .catch(() => false);
   if (!hasCommit) {
     await spawnAsync('git', ['-C', projectDir, 'add', '-A'], { timeout: 5000 }).catch((err) => {
       console.error('[Council] Failed to git add:', err.message);
@@ -129,11 +142,13 @@ async function setupWorktrees(
 
     if (fs.existsSync(wtDir)) {
       const isValid = await spawnAsync('git', ['-C', wtDir, 'rev-parse', '--git-dir'], { timeout: 5000 })
-        .then(() => true).catch(() => false);
+        .then(() => true)
+        .catch(() => false);
       if (isValid) {
         // Warn: hard reset discards uncommitted changes from any previous run
         const dirty = await spawnAsync('git', ['-C', wtDir, 'status', '--porcelain'], { timeout: 5000 })
-          .then(r => r.stdout.trim().length > 0).catch(() => false);
+          .then((r) => r.stdout.trim().length > 0)
+          .catch(() => false);
         if (dirty) {
           console.log(`[Council] WARNING: worktree ${wtDir} has uncommitted changes — discarding via hard reset`);
         }
@@ -146,9 +161,11 @@ async function setupWorktrees(
         worktreeMap.set(agent.name, wtDir);
         continue;
       }
-      await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', wtDir], { timeout: 5000 }).catch((err) => {
-        console.error(`[Council] Failed to remove worktree ${wtDir}:`, err.message);
-      });
+      await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', wtDir], { timeout: 5000 }).catch(
+        (err) => {
+          console.error(`[Council] Failed to remove worktree ${wtDir}:`, err.message);
+        },
+      );
     }
 
     await spawnAsync('git', ['-C', projectDir, 'branch', '-D', branch], { timeout: 5000 }).catch((err) => {
@@ -209,7 +226,7 @@ function buildAgentPrompt(
   previousResponses: AgentResponse[],
   allAgents: AgentPersona[],
 ): string {
-  const otherAgents = allAgents.filter(a => a.name !== agent.name);
+  const otherAgents = allAgents.filter((a) => a.name !== agent.name);
 
   // Build history with tail-first truncation (preserve reports and votes)
   let history = '';
@@ -222,9 +239,7 @@ function buildAgentPrompt(
         history += `### 第 ${currentRound} 轮\n\n`;
       }
       const clean = stripConsensusTags(resp.content);
-      const preview = clean.length > HISTORY_PREVIEW_CHARS
-        ? '...' + clean.slice(-HISTORY_PREVIEW_CHARS)
-        : clean;
+      const preview = clean.length > HISTORY_PREVIEW_CHARS ? '...' + clean.slice(-HISTORY_PREVIEW_CHARS) : clean;
       history += `**${resp.agent}** (${resp.consensus ? '✅同意结束' : '❌继续'}):\n${preview}\n\n`;
     }
   }
@@ -236,7 +251,7 @@ function buildAgentPrompt(
 ${task}
 
 ## 你的伙伴
-${otherAgents.map(a => `- ${a.emoji} ${a.name}`).join('\n')}
+${otherAgents.map((a) => `- ${a.emoji} ${a.name}`).join('\n')}
 ${history}
 ## ⚠️ 本轮规则：只做规划，不写代码
 
@@ -270,7 +285,7 @@ ${history}
 ${task}
 
 ## 你的伙伴
-${otherAgents.map(a => `- ${a.emoji} ${a.name}`).join('\n')}
+${otherAgents.map((a) => `- ${a.emoji} ${a.name}`).join('\n')}
 ${history}
 ## 你的工作
 
@@ -306,13 +321,9 @@ function resolveConfigPath(filename: string): string {
   return candidates[0]; // fallback — will error on read
 }
 
-function buildSystemPrompt(
-  agent: AgentPersona,
-  allAgents: AgentPersona[],
-  worktreePath: string,
-): string {
-  const otherAgents = allAgents.filter(a => a.name !== agent.name);
-  const otherBranches = otherAgents.map(a => `\`council/${a.name}\``).join(', ');
+function buildSystemPrompt(agent: AgentPersona, allAgents: AgentPersona[], worktreePath: string): string {
+  const otherAgents = allAgents.filter((a) => a.name !== agent.name);
+  const otherBranches = otherAgents.map((a) => `\`council/${a.name}\``).join(', ');
 
   const templatePath = resolveConfigPath('council-system-prompt.md');
   const template = fs.readFileSync(templatePath, 'utf-8');
@@ -384,7 +395,10 @@ export class Council extends EventEmitter {
       for (let attempt = 0; attempt <= EMPTY_RESPONSE_MAX_RETRIES; attempt++) {
         if (attempt > 0) {
           this.emitEvent({
-            type: 'agent-chunk', sessionId, round, agent: agent.name,
+            type: 'agent-chunk',
+            sessionId,
+            round,
+            agent: agent.name,
             content: `\n[Empty response, retry ${attempt}/${EMPTY_RESPONSE_MAX_RETRIES}]\n`,
           });
           await sleep(EMPTY_RESPONSE_RETRY_DELAY_MS);
@@ -398,7 +412,7 @@ export class Council extends EventEmitter {
           engine,
           model: agent.model,
           baseUrl: agent.baseUrl,
-          permissionMode: 'bypassPermissions',
+          permissionMode: agent.permissionMode ?? 'bypassPermissions',
           appendSystemPrompt: systemPrompt,
           maxTurns: this.config.maxTurnsPerAgent || 30,
           maxBudgetUsd: this.config.maxBudgetUsd,
@@ -493,7 +507,9 @@ export class Council extends EventEmitter {
     const moduleRoot = path.resolve(path.dirname(import.meta.url.replace('file://', '')), '..');
     const resolvedProjectDir = path.resolve(this.config.projectDir);
     if (resolvedProjectDir === moduleRoot || resolvedProjectDir.startsWith(moduleRoot + '/')) {
-      throw new Error(`SAFETY: projectDir (${resolvedProjectDir}) is inside program root (${moduleRoot}). Refusing to start council.`);
+      throw new Error(
+        `SAFETY: projectDir (${resolvedProjectDir}) is inside program root (${moduleRoot}). Refusing to start council.`,
+      );
     }
 
     console.log(`[Council] Starting: ${this.config.agents.length} agents, max ${this.config.maxRounds} rounds`);
@@ -529,7 +545,7 @@ export class Council extends EventEmitter {
         this._pendingInjection = null;
 
         // Build prompts for all agents
-        const agentTasks = this.config.agents.map(agent => {
+        const agentTasks = this.config.agents.map((agent) => {
           const workDir = worktreeMap.get(agent.name) || this.config.projectDir;
           let prompt = buildAgentPrompt(agent, trimmedTask, round, session.responses, this.config.agents);
           if (injection) {
@@ -542,7 +558,7 @@ export class Council extends EventEmitter {
         // Execute all agents in parallel
         const results = await Promise.allSettled(
           agentTasks.map(({ agent, prompt, systemPrompt, workDir }) =>
-            this.runSingleAgent(agent, prompt, systemPrompt, workDir, round, session.id)
+            this.runSingleAgent(agent, prompt, systemPrompt, workDir, round, session.id),
           ),
         );
 
@@ -560,13 +576,17 @@ export class Council extends EventEmitter {
             this.emitEvent({ type: 'error', sessionId: session.id, round, agent: agent.name, error: errMsg });
             roundVotes.push(false);
             session.responses.push({
-              agent: agent.name, round, content: `Error: ${errMsg}`,
-              consensus: false, sessionKey: '', timestamp: new Date().toISOString(),
+              agent: agent.name,
+              round,
+              content: `Error: ${errMsg}`,
+              consensus: false,
+              sessionKey: '',
+              timestamp: new Date().toISOString(),
             });
           }
         }
 
-        const allYes = roundVotes.length === this.config.agents.length && roundVotes.every(v => v);
+        const allYes = roundVotes.length === this.config.agents.length && roundVotes.every((v) => v);
         this.emitEvent({ type: 'round-end', sessionId: session.id, round, status: allYes ? 'consensus' : 'continue' });
 
         if (allYes) {
@@ -574,7 +594,7 @@ export class Council extends EventEmitter {
           session.status = 'awaiting_user';
           break;
         } else {
-          const yesCount = roundVotes.filter(v => v).length;
+          const yesCount = roundVotes.filter((v) => v).length;
           console.log(`[Council] Votes: ${yesCount}/${this.config.agents.length} YES`);
         }
 
@@ -608,12 +628,9 @@ export class Council extends EventEmitter {
   // ─── Summary & Transcript ─────────────────────────────────────────────
 
   private generateSummary(session: CouncilSession): string {
-    const maxRound = session.responses.length > 0
-      ? Math.max(...session.responses.map(r => r.round))
-      : 0;
-    const statusText = session.status === 'awaiting_user' || session.status === 'consensus'
-      ? 'Consensus reached'
-      : 'Max rounds reached';
+    const maxRound = session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
+    const statusText =
+      session.status === 'awaiting_user' || session.status === 'consensus' ? 'Consensus reached' : 'Max rounds reached';
     const lines = [
       `# Council Summary\n`,
       `- **Task**: ${session.task}`,
@@ -622,9 +639,9 @@ export class Council extends EventEmitter {
       `- **Directory**: ${session.config.projectDir}\n`,
       `## Final Agent Status\n`,
     ];
-    const lastResponses = session.responses.filter(r => r.round === maxRound);
+    const lastResponses = session.responses.filter((r) => r.round === maxRound);
     for (const resp of lastResponses) {
-      const agent = session.config.agents.find(a => a.name === resp.agent);
+      const agent = session.config.agents.find((a) => a.name === resp.agent);
       const emoji = agent?.emoji || '';
       const clean = stripConsensusTags(resp.content);
       const preview = clean.slice(0, 400) + (clean.length > 400 ? '...' : '');
@@ -636,11 +653,9 @@ export class Council extends EventEmitter {
   }
 
   private generateCompactContext(session: CouncilSession): string {
-    const maxRound = session.responses.length > 0
-      ? Math.max(...session.responses.map(r => r.round))
-      : 0;
-    const recent = session.responses.filter(r => r.round >= maxRound - 1);
-    const summaries = recent.map(resp => {
+    const maxRound = session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
+    const recent = session.responses.filter((r) => r.round >= maxRound - 1);
+    const summaries = recent.map((resp) => {
       const clean = stripConsensusTags(resp.content).replace(/\s+/g, ' ').slice(0, 300);
       return `- [R${resp.round}] ${resp.agent}: ${clean}${clean.length >= 300 ? '...' : ''}`;
     });
@@ -670,7 +685,7 @@ export class Council extends EventEmitter {
         currentRound = resp.round;
         content += `## Round ${currentRound}\n\n`;
       }
-      const agent = session.config.agents.find(a => a.name === resp.agent);
+      const agent = session.config.agents.find((a) => a.name === resp.agent);
       content += `### ${agent?.emoji || ''} ${resp.agent}\n\n${resp.content}\n\n`;
     }
 
@@ -686,9 +701,24 @@ export function getDefaultCouncilConfig(projectDir: string): CouncilConfig {
   return {
     name: 'Code Council',
     agents: [
-      { name: 'Architect', emoji: '🏗️', persona: 'You are a system architect. You focus on code structure, design patterns, scalability, and long-term maintainability.' },
-      { name: 'Engineer', emoji: '⚙️', persona: 'You are an implementation engineer. You focus on code quality, error handling, edge cases, and performance.' },
-      { name: 'Reviewer', emoji: '🔍', persona: 'You are a code reviewer. You focus on code standards, potential bugs, security issues, and documentation.' },
+      {
+        name: 'Architect',
+        emoji: '🏗️',
+        persona:
+          'You are a system architect. You focus on code structure, design patterns, scalability, and long-term maintainability.',
+      },
+      {
+        name: 'Engineer',
+        emoji: '⚙️',
+        persona:
+          'You are an implementation engineer. You focus on code quality, error handling, edge cases, and performance.',
+      },
+      {
+        name: 'Reviewer',
+        emoji: '🔍',
+        persona:
+          'You are a code reviewer. You focus on code standards, potential bugs, security issues, and documentation.',
+      },
     ],
     maxRounds: 15,
     projectDir,
