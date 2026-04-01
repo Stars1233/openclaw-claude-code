@@ -4,14 +4,7 @@
 
 // ─── Permission & Effort ─────────────────────────────────────────────────────
 
-export type PermissionMode =
-  | 'acceptEdits'
-  | 'bypassPermissions'
-  | 'default'
-  | 'delegate'
-  | 'dontAsk'
-  | 'plan'
-  | 'auto';
+export type PermissionMode = 'acceptEdits' | 'bypassPermissions' | 'default' | 'delegate' | 'dontAsk' | 'plan' | 'auto';
 
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'auto';
 
@@ -81,6 +74,12 @@ export interface SessionStats {
   isReady: boolean;
   startTime: string | null;
   lastActivity: string | null;
+  /**
+   * Approximate context window utilization (0-100).
+   * Estimated as (tokensIn + tokensOut) / 200,000 * 100.
+   * Claude Code does not expose exact context usage via the JSON protocol,
+   * so this is a best-effort heuristic that may overcount on long conversations.
+   */
   contextPercent: number;
 }
 
@@ -238,7 +237,10 @@ export interface ISession {
   resume(): void;
 
   // ── Communication ───────────────────────────────────────────────────────
-  send(message: string | unknown[], options?: SessionSendOptions): Promise<TurnResult | { requestId: number; sent: boolean }>;
+  send(
+    message: string | unknown[],
+    options?: SessionSendOptions,
+  ): Promise<TurnResult | { requestId: number; sent: boolean }>;
 
   // ── Observability ───────────────────────────────────────────────────────
   getStats(): SessionStats & { sessionId?: string; uptime: number };
@@ -270,6 +272,8 @@ export interface PluginConfig {
   maxConcurrentSessions: number;
   sessionTtlMinutes: number;
   proxy?: ProxyConfig;
+  /** Override or extend model pricing at runtime without a new release. */
+  pricingOverrides?: Record<string, Partial<ModelPricing>>;
 }
 
 export interface ProxyConfig {
@@ -281,29 +285,48 @@ export interface ProxyConfig {
 // ─── Model Pricing ───────────────────────────────────────────────────────────
 
 export interface ModelPricing {
-  input: number;   // per 1M tokens
+  input: number; // per 1M tokens
   output: number;
   cached?: number;
 }
 
-export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'claude-opus-4-6':   { input: 15, output: 75, cached: 1.5 },
-  'claude-sonnet-4-6': { input: 3,  output: 15, cached: 0.3 },
-  'claude-haiku-4-5':  { input: 0.8, output: 4, cached: 0.08 },
-  'gemini-2.5-pro':    { input: 1.25, output: 10, cached: 0.315 },
-  'gemini-2.5-flash':  { input: 0.15, output: 0.6, cached: 0.0375 },
-  'gpt-4o':            { input: 2.5, output: 10, cached: 1.25 },
-  'o4-mini':           { input: 1.1, output: 4.4 },
-  'o3':                { input: 10, output: 40 },
-  'codex-mini':        { input: 1.5, output: 6 },
+const DEFAULT_MODEL_PRICING: Record<string, ModelPricing> = {
+  'claude-opus-4-6': { input: 15, output: 75, cached: 1.5 },
+  'claude-sonnet-4-6': { input: 3, output: 15, cached: 0.3 },
+  'claude-haiku-4-5': { input: 0.8, output: 4, cached: 0.08 },
+  'gemini-2.5-pro': { input: 1.25, output: 10, cached: 0.315 },
+  'gemini-2.5-flash': { input: 0.15, output: 0.6, cached: 0.0375 },
+  'gpt-4o': { input: 2.5, output: 10, cached: 1.25 },
+  'o4-mini': { input: 1.1, output: 4.4 },
+  o3: { input: 10, output: 40 },
+  'codex-mini': { input: 1.5, output: 6 },
 };
+
+/** Model pricing table — mutable copy of defaults, can be overridden at runtime. */
+export const MODEL_PRICING: Record<string, ModelPricing> = { ...DEFAULT_MODEL_PRICING };
+
+/**
+ * Override or extend model pricing at runtime.
+ * Useful when prices change without requiring a new package release.
+ * Partial overrides are merged with existing values.
+ */
+export function overrideModelPricing(overrides: Record<string, Partial<ModelPricing>>): void {
+  for (const [model, pricing] of Object.entries(overrides)) {
+    const existing = MODEL_PRICING[model];
+    MODEL_PRICING[model] = {
+      input: pricing.input ?? existing?.input ?? 0,
+      output: pricing.output ?? existing?.output ?? 0,
+      cached: pricing.cached ?? existing?.cached,
+    };
+  }
+}
 
 // ─── Model Aliases ───────────────────────────────────────────────────────────
 
 export const MODEL_ALIASES: Record<string, string> = {
-  'opus': 'claude-opus-4-6',
-  'sonnet': 'claude-sonnet-4-6',
-  'haiku': 'claude-haiku-4-5',
+  opus: 'claude-opus-4-6',
+  sonnet: 'claude-sonnet-4-6',
+  haiku: 'claude-haiku-4-5',
   'gemini-flash': 'gemini-2.5-flash',
   'gemini-pro': 'gemini-2.5-pro',
 };
@@ -342,8 +365,15 @@ export interface UltrareviewResult {
 // ─── Council Types ──────────────────────────────────────────────────────────
 
 export type CouncilEventType =
-  | 'session-start' | 'round-start' | 'agent-start' | 'agent-chunk'
-  | 'agent-tool' | 'agent-complete' | 'round-end' | 'complete' | 'error';
+  | 'session-start'
+  | 'round-start'
+  | 'agent-start'
+  | 'agent-chunk'
+  | 'agent-tool'
+  | 'agent-complete'
+  | 'round-end'
+  | 'complete'
+  | 'error';
 
 export interface CouncilEvent {
   type: CouncilEventType;
@@ -369,6 +399,7 @@ export interface AgentPersona {
   role?: string;
   model?: string;
   baseUrl?: string;
+  permissionMode?: PermissionMode;
 }
 
 export interface CouncilConfig {

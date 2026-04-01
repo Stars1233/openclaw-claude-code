@@ -36,7 +36,7 @@ async function api(path: string, method = 'GET', body?: unknown): Promise<Record
   try {
     const base = getBaseUrl();
     const resp = await fetch(`${base}${path}`, opts);
-    return await resp.json() as Record<string, unknown>;
+    return (await resp.json()) as Record<string, unknown>;
   } catch {
     return { ok: false, error: `Cannot connect to ${getBaseUrl()} — is the plugin running?` };
   }
@@ -61,8 +61,16 @@ program
     if (port) {
       console.log(`Standalone server running on http://127.0.0.1:${port}`);
       console.log('Press Ctrl+C to stop');
-      process.on('SIGINT', async () => { await server.stop(); await manager.shutdown(); process.exit(0); });
-      process.on('SIGTERM', async () => { await server.stop(); await manager.shutdown(); process.exit(0); });
+      process.on('SIGINT', async () => {
+        await server.stop();
+        await manager.shutdown();
+        process.exit(0);
+      });
+      process.on('SIGTERM', async () => {
+        await server.stop();
+        await manager.shutdown();
+        process.exit(0);
+      });
     }
   });
 
@@ -131,7 +139,11 @@ program
   .option('-s, --stream', 'Collect streaming chunks and include in output')
   .action(async (name, message, opts) => {
     const result = await api('/session/send', 'POST', {
-      name, message, effort: opts.effort, plan: opts.plan, timeout: parseInt(opts.timeout),
+      name,
+      message,
+      effort: opts.effort,
+      plan: opts.plan,
+      timeout: parseInt(opts.timeout),
       stream: opts.stream || undefined,
     });
     if (result.ok) {
@@ -139,30 +151,44 @@ program
       if (opts.stream && Array.isArray(result.chunks) && result.chunks.length > 0) {
         console.log(`\n[${result.chunks.length} streaming chunks collected]`);
       }
-    }
-    else console.error(`Failed: ${result.error}`);
+    } else console.error(`Failed: ${result.error}`);
   });
 
-program.command('session-stop <name>').description('Stop a session')
+program
+  .command('session-stop <name>')
+  .description('Stop a session')
   .action(async (name) => {
     const r = await api('/session/stop', 'POST', { name });
     if (r.ok) console.log(`Session '${name}' stopped.`);
     else console.error(`Failed: ${r.error}`);
   });
 
-program.command('session-list').description('List sessions')
+program
+  .command('session-list')
+  .description('List sessions')
   .action(async () => {
     const r = await api('/session/list');
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     const sessions = r.sessions as Array<{ name: string; model?: string; cwd: string }>;
-    if (!sessions.length) { console.log('No active sessions.'); return; }
+    if (!sessions.length) {
+      console.log('No active sessions.');
+      return;
+    }
     for (const s of sessions) console.log(`  ${s.name} — ${s.model || 'default'} (${s.cwd})`);
   });
 
-program.command('session-status <name>').description('Get session status')
+program
+  .command('session-status <name>')
+  .description('Get session status')
   .action(async (name) => {
     const r = await api('/session/status', 'POST', { name });
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     const s = r.stats as Record<string, unknown>;
     console.log(`Session: ${name}`);
     console.log(`  Turns: ${s.turns}, Tools: ${s.toolCalls}, Cost: $${s.costUsd}`);
@@ -170,68 +196,123 @@ program.command('session-status <name>').description('Get session status')
     console.log(`  Uptime: ${s.uptime}s`);
   });
 
-program.command('session-grep <name> <pattern>').description('Search session history')
+program
+  .command('session-grep <name> <pattern>')
+  .description('Search session history')
   .option('-n, --limit <n>', 'Max results', '50')
   .action(async (name, pattern, opts) => {
     const r = await api('/session/grep', 'POST', { name, pattern, limit: parseInt(opts.limit) });
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     console.log(`Found ${r.count} match(es)`);
     for (const m of r.matches as Array<Record<string, string>>) console.log(`  [${m.time}] ${m.type}`);
   });
 
-program.command('session-compact <name>').description('Compact session')
+program
+  .command('session-compact <name>')
+  .description('Compact session')
   .option('--summary <text>', 'Custom summary')
   .action(async (name, opts) => {
     const r = await api('/session/compact', 'POST', { name, summary: opts.summary });
-    if (r.ok) console.log('Compacted.'); else console.error(`Failed: ${r.error}`);
+    if (r.ok) console.log('Compacted.');
+    else console.error(`Failed: ${r.error}`);
   });
 
 // Agent management
-program.command('agents-list').description('List agents').option('-d, --cwd <dir>')
+program
+  .command('agents-list')
+  .description('List agents')
+  .option('-d, --cwd <dir>')
   .action(async (opts) => {
     const q = opts.cwd ? `?cwd=${encodeURIComponent(opts.cwd)}` : '';
     const r = await api(`/agents${q}`);
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     const agents = r.agents as Array<{ name: string; description: string }>;
-    if (!agents.length) { console.log('No agents found.'); return; }
+    if (!agents.length) {
+      console.log('No agents found.');
+      return;
+    }
     for (const a of agents) console.log(`  ${a.name}${a.description ? ` — ${a.description}` : ''}`);
   });
 
-program.command('agents-create <name>').description('Create agent')
-  .option('-d, --cwd <dir>').option('--description <desc>').option('--prompt <prompt>')
+program
+  .command('agents-create <name>')
+  .description('Create agent')
+  .option('-d, --cwd <dir>')
+  .option('--description <desc>')
+  .option('--prompt <prompt>')
   .action(async (name, opts) => {
-    const r = await api('/agents/create', 'POST', { name, cwd: opts.cwd, description: opts.description, prompt: opts.prompt });
+    const r = await api('/agents/create', 'POST', {
+      name,
+      cwd: opts.cwd,
+      description: opts.description,
+      prompt: opts.prompt,
+    });
     if (r.ok) console.log(`Agent '${name}' created at: ${r.path}`);
     else console.error(`Failed: ${r.error}`);
   });
 
 // Skills
-program.command('skills-list').description('List skills').option('-d, --cwd <dir>')
+program
+  .command('skills-list')
+  .description('List skills')
+  .option('-d, --cwd <dir>')
   .action(async (opts) => {
     const q = opts.cwd ? `?cwd=${encodeURIComponent(opts.cwd)}` : '';
     const r = await api(`/skills${q}`);
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     const skills = r.skills as Array<{ name: string; description: string }>;
-    if (!skills.length) { console.log('No skills found.'); return; }
+    if (!skills.length) {
+      console.log('No skills found.');
+      return;
+    }
     for (const s of skills) console.log(`  ${s.name}${s.description ? ` — ${s.description}` : ''}`);
   });
 
-program.command('skills-create <name>').description('Create skill')
-  .option('-d, --cwd <dir>').option('--description <desc>').option('--prompt <prompt>').option('--trigger <t>')
+program
+  .command('skills-create <name>')
+  .description('Create skill')
+  .option('-d, --cwd <dir>')
+  .option('--description <desc>')
+  .option('--prompt <prompt>')
+  .option('--trigger <t>')
   .action(async (name, opts) => {
-    const r = await api('/skills/create', 'POST', { name, cwd: opts.cwd, description: opts.description, prompt: opts.prompt, trigger: opts.trigger });
+    const r = await api('/skills/create', 'POST', {
+      name,
+      cwd: opts.cwd,
+      description: opts.description,
+      prompt: opts.prompt,
+      trigger: opts.trigger,
+    });
     if (r.ok) console.log(`Skill '${name}' created at: ${r.path}`);
     else console.error(`Failed: ${r.error}`);
   });
 
 // Rules
-program.command('rules-list').description('List rules').option('-d, --cwd <dir>')
+program
+  .command('rules-list')
+  .description('List rules')
+  .option('-d, --cwd <dir>')
   .action(async (opts) => {
     const q = opts.cwd ? `?cwd=${encodeURIComponent(opts.cwd)}` : '';
     const r = await api(`/rules${q}`);
-    if (!r.ok) { console.error(`Failed: ${r.error}`); return; }
+    if (!r.ok) {
+      console.error(`Failed: ${r.error}`);
+      return;
+    }
     const rules = r.rules as Array<{ name: string; description: string; paths: string; condition: string }>;
-    if (!rules.length) { console.log('No rules found.'); return; }
+    if (!rules.length) {
+      console.log('No rules found.');
+      return;
+    }
     for (const rule of rules) {
       let info = `  ${rule.name}`;
       if (rule.description) info += ` — ${rule.description}`;
@@ -241,26 +322,44 @@ program.command('rules-list').description('List rules').option('-d, --cwd <dir>'
     }
   });
 
-program.command('rules-create <name>').description('Create rule')
-  .option('-d, --cwd <dir>').option('--description <desc>').option('--content <text>')
-  .option('--paths <glob>').option('--condition <expr>')
+program
+  .command('rules-create <name>')
+  .description('Create rule')
+  .option('-d, --cwd <dir>')
+  .option('--description <desc>')
+  .option('--content <text>')
+  .option('--paths <glob>')
+  .option('--condition <expr>')
   .action(async (name, opts) => {
-    const r = await api('/rules/create', 'POST', { name, cwd: opts.cwd, description: opts.description, content: opts.content, paths: opts.paths, condition: opts.condition });
+    const r = await api('/rules/create', 'POST', {
+      name,
+      cwd: opts.cwd,
+      description: opts.description,
+      content: opts.content,
+      paths: opts.paths,
+      condition: opts.condition,
+    });
     if (r.ok) console.log(`Rule '${name}' created at: ${r.path}`);
     else console.error(`Failed: ${r.error}`);
   });
 
 // Agent teams
-program.command('session-team-list <name>').description('List teammates')
+program
+  .command('session-team-list <name>')
+  .description('List teammates')
   .action(async (name) => {
     const r = await api('/session/team-list', 'POST', { name });
-    if (r.ok) console.log(r.response || 'No team info'); else console.error(`Failed: ${r.error}`);
+    if (r.ok) console.log(r.response || 'No team info');
+    else console.error(`Failed: ${r.error}`);
   });
 
-program.command('session-team-send <name> <teammate> <message>').description('Message teammate')
+program
+  .command('session-team-send <name> <teammate> <message>')
+  .description('Message teammate')
   .action(async (name, teammate, message) => {
     const r = await api('/session/team-send', 'POST', { name, teammate, message });
-    if (r.ok) console.log(r.output || 'Sent'); else console.error(`Failed: ${r.error}`);
+    if (r.ok) console.log(r.output || 'Sent');
+    else console.error(`Failed: ${r.error}`);
   });
 
 program.parse();

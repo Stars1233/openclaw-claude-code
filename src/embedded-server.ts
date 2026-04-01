@@ -47,7 +47,7 @@ export class EmbeddedServer {
 
   async stop(): Promise<void> {
     if (!this.server) return;
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       this.server!.close(() => resolve());
     });
   }
@@ -61,7 +61,11 @@ export class EmbeddedServer {
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
 
     const url = new URL(req.url || '/', `http://localhost:${this.port}`);
     const path = url.pathname;
@@ -69,10 +73,14 @@ export class EmbeddedServer {
     // Read body for POST
     if (req.method === 'POST') {
       let body = '';
-      req.on('data', chunk => { body += chunk; });
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
       req.on('end', () => {
         let parsed: Record<string, unknown> = {};
-        try { parsed = JSON.parse(body || '{}'); } catch {}
+        try {
+          parsed = JSON.parse(body || '{}');
+        } catch {}
         this.route(path, parsed, url.searchParams, res);
       });
     } else {
@@ -81,8 +89,10 @@ export class EmbeddedServer {
   }
 
   private async route(
-    path: string, body: Record<string, unknown>,
-    query: URLSearchParams, res: http.ServerResponse,
+    path: string,
+    body: Record<string, unknown>,
+    query: URLSearchParams,
+    res: http.ServerResponse,
   ): Promise<void> {
     try {
       const json = (status: number, data: unknown) => {
@@ -99,14 +109,11 @@ export class EmbeddedServer {
       }
 
       if (path === '/session/send') {
-        const result = await this.manager.sendMessage(
-          body.name as string, body.message as string,
-          {
-            effort: body.effort as EffortLevel | undefined,
-            plan: body.plan as boolean | undefined,
-            timeout: body.timeout as number | undefined,
-          }
-        );
+        const result = await this.manager.sendMessage(body.name as string, body.message as string, {
+          effort: body.effort as EffortLevel | undefined,
+          plan: body.plan as boolean | undefined,
+          timeout: body.timeout as number | undefined,
+        });
         json(200, { ok: true, ...result });
         return;
       }
@@ -130,7 +137,9 @@ export class EmbeddedServer {
 
       if (path === '/session/grep') {
         const matches = await this.manager.grepSession(
-          body.name as string, body.pattern as string, body.limit as number | undefined
+          body.name as string,
+          body.pattern as string,
+          body.limit as number | undefined,
         );
         json(200, { ok: true, count: matches.length, matches });
         return;
@@ -170,7 +179,9 @@ export class EmbeddedServer {
 
       if (path === '/session/team-send') {
         const result = await this.manager.teamSend(
-          body.name as string, body.teammate as string, body.message as string
+          body.name as string,
+          body.teammate as string,
+          body.message as string,
         );
         json(200, { ok: true, ...result });
         return;
@@ -186,8 +197,10 @@ export class EmbeddedServer {
 
       if (path === '/agents/create') {
         const p = this.manager.createAgent(
-          body.name as string, body.cwd as string | undefined,
-          body.description as string | undefined, body.prompt as string | undefined
+          body.name as string,
+          body.cwd as string | undefined,
+          body.description as string | undefined,
+          body.prompt as string | undefined,
         );
         json(200, { ok: true, path: p });
         return;
@@ -200,7 +213,11 @@ export class EmbeddedServer {
       }
 
       if (path === '/skills/create') {
-        const p = this.manager.createSkill(body.name as string, body.cwd as string | undefined, body as Record<string, string>);
+        const p = this.manager.createSkill(
+          body.name as string,
+          body.cwd as string | undefined,
+          body as Record<string, string>,
+        );
         json(200, { ok: true, path: p });
         return;
       }
@@ -212,7 +229,11 @@ export class EmbeddedServer {
       }
 
       if (path === '/rules/create') {
-        const p = this.manager.createRule(body.name as string, body.cwd as string | undefined, body as Record<string, string>);
+        const p = this.manager.createRule(
+          body.name as string,
+          body.cwd as string | undefined,
+          body as Record<string, string>,
+        );
         json(200, { ok: true, path: p });
         return;
       }
