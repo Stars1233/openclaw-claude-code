@@ -457,6 +457,8 @@ export interface CouncilReviewResult {
   worktrees: string[];
   reviews: string[];
   agentSummaries: Array<{ agent: string; consensus: boolean; preview: string }>;
+  /** Reviewer guidance loaded from configs/council-reviewer-prompt.md */
+  reviewerGuidance: string;
 }
 
 export interface CouncilAcceptResult {
