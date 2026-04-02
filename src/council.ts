@@ -794,6 +794,15 @@ export class Council extends EventEmitter {
       };
     });
 
+    // Load reviewer guidance from config
+    let reviewerGuidance = '';
+    try {
+      const guidancePath = resolveConfigPath('council-reviewer-prompt.md');
+      reviewerGuidance = fs.readFileSync(guidancePath, 'utf-8');
+    } catch {
+      reviewerGuidance = 'Reviewer guidance not found. Evaluate the council output independently.';
+    }
+
     return {
       councilId: session.id,
       projectDir: dir,
@@ -806,6 +815,7 @@ export class Council extends EventEmitter {
       worktrees: councilWorktrees,
       reviews,
       agentSummaries,
+      reviewerGuidance,
     };
   }
 

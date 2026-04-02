@@ -781,6 +781,7 @@ export class SessionManager {
 
   private councils = new Map<string, Council>();
   private static COUNCIL_RESULT_TTL_MS = 30 * 60 * 1000; // keep completed councils queryable for 30 min
+  private councilCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   councilStart(task: string, config: CouncilConfig): CouncilSession {
     const council = new Council(config, this);
@@ -805,9 +806,15 @@ export class SessionManager {
   }
 
   private _scheduleCouncilCleanup(id: string): void {
-    setTimeout(() => {
+    // Clear any existing timer before scheduling a new one
+    const existing = this.councilCleanupTimers.get(id);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
       this.councils.delete(id);
+      this.councilCleanupTimers.delete(id);
     }, SessionManager.COUNCIL_RESULT_TTL_MS);
+    this.councilCleanupTimers.set(id, timer);
   }
 
   councilStatus(id: string): CouncilSession | undefined {
@@ -831,19 +838,25 @@ export class SessionManager {
   async councilReview(id: string): Promise<CouncilReviewResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
+    this._scheduleCouncilCleanup(id); // reset TTL — user is actively reviewing
     return council.review();
   }
 
   async councilAccept(id: string): Promise<CouncilAcceptResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
-    return council.accept();
+    const result = await council.accept();
+    // Accepted — no longer needed, clean up after short grace period
+    this._scheduleCouncilCleanup(id);
+    return result;
   }
 
   async councilReject(id: string, feedback: string): Promise<CouncilRejectResult> {
     const council = this.councils.get(id);
     if (!council) throw new Error(`Council '${id}' not found`);
-    return council.reject(feedback);
+    const result = await council.reject(feedback);
+    this._scheduleCouncilCleanup(id); // reset TTL — council may be restarted
+    return result;
   }
 
   // ─── Inbox (cross-session messaging) ────────────────────────────────

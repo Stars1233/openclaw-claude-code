@@ -188,6 +188,13 @@ describe('Council post-processing', () => {
       const result = await council.review();
       expect(result.reviews).toEqual([]);
     });
+
+    it('includes reviewer guidance from config', async () => {
+      const result = await council.review();
+      // Should contain guidance (either from file or fallback)
+      expect(result.reviewerGuidance).toBeTruthy();
+      expect(result.reviewerGuidance.length).toBeGreaterThan(0);
+    });
   });
 
   // ─── accept() ──────────────────────────────────────────────────────────
