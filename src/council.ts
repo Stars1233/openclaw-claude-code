@@ -743,9 +743,7 @@ export class Council extends EventEmitter {
 
     // Check reviews/
     const reviewsDir = path.join(dir, 'reviews');
-    const reviews = fs.existsSync(reviewsDir)
-      ? fs.readdirSync(reviewsDir).filter((f) => f.endsWith('.md'))
-      : [];
+    const reviews = fs.existsSync(reviewsDir) ? fs.readdirSync(reviewsDir).filter((f) => f.endsWith('.md')) : [];
 
     // Diff stat: find changed files compared to initial state
     const changedFiles: CouncilChangedFile[] = [];
@@ -753,11 +751,9 @@ export class Council extends EventEmitter {
       // Ensure git history is available before diffing
       await spawnAsync('git', ['-C', dir, 'log', '--oneline', '--all', '-50'], { timeout: 5000 });
       // Get diff stat from recent history (rough heuristic)
-      const diffResult = await spawnAsync(
-        'git',
-        ['-C', dir, 'diff', '--stat', '--numstat', 'HEAD~20', 'HEAD', '--'],
-        { timeout: 10000 },
-      ).catch(() => ({ stdout: '', stderr: '' }));
+      const diffResult = await spawnAsync('git', ['-C', dir, 'diff', '--stat', '--numstat', 'HEAD~20', 'HEAD', '--'], {
+        timeout: 10000,
+      }).catch(() => ({ stdout: '', stderr: '' }));
 
       if (diffResult.stdout.trim()) {
         for (const line of diffResult.stdout.trim().split('\n')) {
@@ -775,11 +771,9 @@ export class Council extends EventEmitter {
 
       // If no numstat, try a simpler approach
       if (changedFiles.length === 0) {
-        const nameOnly = await spawnAsync(
-          'git',
-          ['-C', dir, 'diff', '--name-only', 'HEAD~10', 'HEAD', '--'],
-          { timeout: 5000 },
-        ).catch(() => ({ stdout: '', stderr: '' }));
+        const nameOnly = await spawnAsync('git', ['-C', dir, 'diff', '--name-only', 'HEAD~10', 'HEAD', '--'], {
+          timeout: 5000,
+        }).catch(() => ({ stdout: '', stderr: '' }));
         for (const file of nameOnly.stdout.trim().split('\n').filter(Boolean)) {
           changedFiles.push({ file, status: 'clean', insertions: 0, deletions: 0 });
         }
@@ -789,9 +783,7 @@ export class Council extends EventEmitter {
     }
 
     // Agent summaries from final round
-    const maxRound = session.responses.length > 0
-      ? Math.max(...session.responses.map((r) => r.round))
-      : 0;
+    const maxRound = session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
     const lastResponses = session.responses.filter((r) => r.round === maxRound);
     const agentSummaries = lastResponses.map((resp) => {
       const clean = stripConsensusTags(resp.content);
@@ -842,8 +834,8 @@ export class Council extends EventEmitter {
       if (wtPath && wtPath.includes('council')) {
         // Safety: never remove the project dir itself
         if (path.resolve(wtPath) === path.resolve(dir)) continue;
-        await spawnAsync('git', ['-C', dir, 'worktree', 'remove', '--force', wtPath], { timeout: 10000 }).catch(
-          (err) => console.error(`[Council] Failed to remove worktree ${wtPath}:`, err.message),
+        await spawnAsync('git', ['-C', dir, 'worktree', 'remove', '--force', wtPath], { timeout: 10000 }).catch((err) =>
+          console.error(`[Council] Failed to remove worktree ${wtPath}:`, err.message),
         );
         worktreesRemoved.push(wtPath);
       }

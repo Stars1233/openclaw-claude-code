@@ -30,10 +30,7 @@ function createTempRepo(): string {
 /** Create council branches and artifacts to simulate a completed council */
 function simulateCouncilOutput(dir: string): void {
   // Create plan.md
-  fs.writeFileSync(
-    path.join(dir, 'plan.md'),
-    '# Plan\n- [x] Task 1 [Done: council/Architect]\n- [ ] Task 2\n',
-  );
+  fs.writeFileSync(path.join(dir, 'plan.md'), '# Plan\n- [x] Task 1 [Done: council/Architect]\n- [ ] Task 2\n');
 
   // Create reviews/
   const reviewsDir = path.join(dir, 'reviews');
@@ -68,7 +65,13 @@ function cleanupDir(dir: string): void {
 // ─── Mock SessionManager ───────────────────────────────────────────────────
 
 const mockManager = {
-  startSession: async () => ({ name: 'test', created: new Date().toISOString(), cwd: '/tmp', paused: false, stats: {} }),
+  startSession: async () => ({
+    name: 'test',
+    created: new Date().toISOString(),
+    cwd: '/tmp',
+    paused: false,
+    stats: {},
+  }),
   sendMessage: async () => ({ output: '[CONSENSUS: YES]', events: [] }),
   stopSession: async () => {},
 };
@@ -87,7 +90,7 @@ describe('Council post-processing', () => {
       ...getDefaultCouncilConfig(dir),
       maxRounds: 3,
     };
-    council = new Council(config, mockManager as Parameters<typeof Council['prototype']['constructor']>[1]);
+    council = new Council(config, mockManager as Parameters<(typeof Council)['prototype']['constructor']>[1]);
     // Initialize the council with a fake session
     council.init('Test task: build a feature');
     // Manually set session status to simulate completed council

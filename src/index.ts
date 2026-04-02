@@ -586,8 +586,7 @@ const plugin = {
           id: { type: 'string', description: 'Council session ID' },
           feedback: {
             type: 'string',
-            description:
-              'Detailed feedback explaining why the work is rejected and what needs to be fixed',
+            description: 'Detailed feedback explaining why the work is rejected and what needs to be fixed',
           },
         },
         required: ['id', 'feedback'],
