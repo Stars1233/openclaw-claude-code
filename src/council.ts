@@ -406,6 +406,7 @@ export class Council extends EventEmitter {
     let content = '';
     try {
       for (let attempt = 0; attempt <= EMPTY_RESPONSE_MAX_RETRIES; attempt++) {
+        if (this._aborted) throw new Error('Council aborted');
         if (attempt > 0) {
           this.emitEvent({
             type: 'agent-chunk',
@@ -427,7 +428,7 @@ export class Council extends EventEmitter {
           baseUrl: agent.baseUrl,
           permissionMode: agent.permissionMode ?? 'bypassPermissions',
           appendSystemPrompt: systemPrompt,
-          maxTurns: this.config.maxTurnsPerAgent || 30,
+          maxTurns: this.config.maxTurnsPerAgent || 50,
           maxBudgetUsd: this.config.maxBudgetUsd,
         });
 
@@ -452,8 +453,9 @@ export class Council extends EventEmitter {
 
       // Follow-up if response is too short and has no consensus marker
       const strippedContent = content.replace(/^\[Agent completed[^\]]*\]\s*/i, '').trim();
-      if (strippedContent.length < MIN_COMPLETE_RESPONSE_LENGTH && !hasConsensusMarker(content)) {
+      if (!this._aborted && strippedContent.length < MIN_COMPLETE_RESPONSE_LENGTH && !hasConsensusMarker(content)) {
         for (let i = 0; i < FOLLOWUP_MAX_RETRIES; i++) {
+          if (this._aborted) break;
           try {
             const followup = await this.manager.sendMessage(
               sessionName,
@@ -511,7 +513,9 @@ export class Council extends EventEmitter {
 
   // ─── Main Orchestration Loop ──────────────────────────────────────────
 
-  async run(): Promise<CouncilSession> {
+  async run(task?: string): Promise<CouncilSession> {
+    // Allow run(task) as shorthand for init(task) + run()
+    if (task && !this._session) this.init(task);
     const session = this._session;
     if (!session) throw new Error('Council not initialised — call init() first');
     const trimmedTask = session.task;
@@ -967,25 +971,28 @@ _Replace the tasks below with specific actionable items based on the feedback ab
 
 export function getDefaultCouncilConfig(projectDir: string): CouncilConfig {
   return {
-    name: 'Code Council',
+    name: 'Three Minds Council',
     agents: [
       {
-        name: 'Architect',
-        emoji: '🏗️',
+        name: 'GPT',
+        emoji: '🟢',
+        persona:
+          'You are a pragmatic engineer. You focus on implementation quality, error handling, edge cases, and performance.',
+        role: 'gpt',
+      },
+      {
+        name: 'Claude',
+        emoji: '🟠',
         persona:
           'You are a system architect. You focus on code structure, design patterns, scalability, and long-term maintainability.',
+        role: 'claude',
       },
       {
-        name: 'Engineer',
-        emoji: '⚙️',
-        persona:
-          'You are an implementation engineer. You focus on code quality, error handling, edge cases, and performance.',
-      },
-      {
-        name: 'Reviewer',
-        emoji: '🔍',
+        name: 'Gemini',
+        emoji: '🔵',
         persona:
           'You are a code reviewer. You focus on code standards, potential bugs, security issues, and documentation.',
+        role: 'gemini',
       },
     ],
     maxRounds: 15,

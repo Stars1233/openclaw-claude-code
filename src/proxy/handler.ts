@@ -23,7 +23,7 @@ import {
 import { injectThoughtSigs } from './thought-cache.js';
 import type { ProxyConfig } from '../types.js';
 
-const FETCH_TIMEOUT_MS = 120_000; // 2 minutes
+const FETCH_TIMEOUT_MS = 600_000; // 10 minutes — must exceed agent tool call duration
 
 /** Create an AbortSignal that fires after the given timeout */
 function fetchSignal(ms = FETCH_TIMEOUT_MS): AbortSignal {
