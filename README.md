@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.jpg" alt="openclaw-claude-code banner" width="100%">
+</p>
+
 # openclaw-claude-code
 
 Programmable bridge that turns coding CLIs into headless, agentic engines — persistent sessions, multi-engine orchestration, multi-agent council, and dynamic runtime control.
