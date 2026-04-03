@@ -313,12 +313,27 @@ export const MODEL_PRICING: Record<string, ModelPricing> = { ...DEFAULT_MODEL_PR
 export function overrideModelPricing(overrides: Record<string, Partial<ModelPricing>>): void {
   for (const [model, pricing] of Object.entries(overrides)) {
     const existing = MODEL_PRICING[model];
+    const input = pricing.input ?? existing?.input;
+    const output = pricing.output ?? existing?.output;
+    if (input === undefined || output === undefined) {
+      console.warn(`[ModelPricing] Missing input/output pricing for new model '${model}', defaulting to 0`);
+    }
     MODEL_PRICING[model] = {
-      input: pricing.input ?? existing?.input ?? 0,
-      output: pricing.output ?? existing?.output ?? 0,
+      input: input ?? 0,
+      output: output ?? 0,
       cached: pricing.cached ?? existing?.cached,
     };
   }
+}
+
+/**
+ * Look up pricing for a model key. Strips common vendor prefixes before lookup.
+ * Falls back to the provided defaultModel key, or 'claude-sonnet-4-6' if not found.
+ */
+export function getModelPricing(model?: string, defaultModel = 'claude-sonnet-4-6'): ModelPricing {
+  if (!model) return MODEL_PRICING[defaultModel] ?? { input: 0, output: 0 };
+  const key = model.replace(/^anthropic\/|^google\/|^openai\/|^openai-codex\/|^gemini\//g, '');
+  return MODEL_PRICING[key] ?? MODEL_PRICING[defaultModel] ?? { input: 0, output: 0 };
 }
 
 // ─── Model Aliases ───────────────────────────────────────────────────────────

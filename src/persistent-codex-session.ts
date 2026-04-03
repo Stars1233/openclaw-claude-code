@@ -12,6 +12,7 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import {
   type SessionConfig,
@@ -23,16 +24,11 @@ import {
   type TurnResult,
   type CostBreakdown,
   MODEL_ALIASES,
-  MODEL_PRICING,
-  type ModelPricing,
+  getModelPricing as _getModelPricingBase,
 } from './types.js';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getModelPricing(model?: string): ModelPricing {
-  if (!model) return MODEL_PRICING['o4-mini'] ?? { input: 1.1, output: 4.4 };
-  const key = model.replace(/^openai\/|^openai-codex\//g, '');
-  return MODEL_PRICING[key] ?? MODEL_PRICING['o4-mini'] ?? { input: 1.1, output: 4.4 };
+function getModelPricing(model?: string) {
+  return _getModelPricingBase(model, 'o4-mini');
 }
 
 // ─── PersistentCodexSession ─────────────────────────────────────────────────
@@ -82,9 +78,12 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
   // ─── Start ───────────────────────────────────────────────────────────────
 
   async start(): Promise<this> {
-    // Ensure CWD exists
-    if (this.options.cwd && !fs.existsSync(this.options.cwd)) {
-      fs.mkdirSync(this.options.cwd, { recursive: true });
+    // Normalize and ensure CWD exists
+    if (this.options.cwd) {
+      this.options.cwd = path.resolve(this.options.cwd);
+      if (!fs.existsSync(this.options.cwd)) {
+        fs.mkdirSync(this.options.cwd, { recursive: true });
+      }
     }
 
     this.sessionId = `codex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

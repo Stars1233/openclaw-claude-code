@@ -84,6 +84,7 @@ program
   .option('--permission-mode <mode>', 'Permission mode', 'acceptEdits')
   .option('--effort <level>', 'Effort level')
   .option('--allowed-tools <tools>', 'Comma-separated tools to auto-approve')
+  .option('--disallowed-tools <tools>', 'Comma-separated tools to deny')
   .option('--max-turns <n>', 'Max agent loop turns')
   .option('--max-budget <usd>', 'Max API spend')
   .option('--system-prompt <prompt>', 'Replace system prompt')
@@ -99,6 +100,10 @@ program
   .option('--skip-persistence', 'Disable session persistence')
   .option('--betas <headers>', 'Custom beta headers')
   .option('--enable-agent-teams', 'Enable agent teams')
+  .option('--enable-auto-mode', 'Enable auto permission mode')
+  .option('--resume-session-id <id>', 'Resume existing session by ID')
+  .option('--base-url <url>', 'Custom API endpoint (for proxy)')
+  .option('--add-dir <dirs>', 'Comma-separated additional working directories')
   .action(async (name, opts) => {
     const body: Record<string, unknown> = { name: name || `session-${Date.now()}` };
     if (opts.cwd) body.cwd = opts.cwd;
@@ -107,11 +112,37 @@ program
     if (opts.permissionMode) body.permissionMode = opts.permissionMode;
     if (opts.effort) body.effort = opts.effort;
     if (opts.allowedTools) body.allowedTools = opts.allowedTools.split(',');
-    if (opts.maxTurns) body.maxTurns = parseInt(opts.maxTurns);
-    if (opts.maxBudget) body.maxBudgetUsd = parseFloat(opts.maxBudget);
+    if (opts.disallowedTools) body.disallowedTools = opts.disallowedTools.split(',');
+    if (opts.resumeSessionId) body.resumeSessionId = opts.resumeSessionId;
+    if (opts.baseUrl) body.baseUrl = opts.baseUrl;
+    if (opts.addDir) body.addDir = opts.addDir.split(',');
+    if (opts.enableAutoMode) body.enableAutoMode = true;
+    if (opts.maxTurns) {
+      const v = parseInt(opts.maxTurns);
+      if (isNaN(v) || v <= 0) {
+        console.error('--max-turns must be a positive integer');
+        process.exit(1);
+      }
+      body.maxTurns = v;
+    }
+    if (opts.maxBudget) {
+      const v = parseFloat(opts.maxBudget);
+      if (isNaN(v) || v <= 0) {
+        console.error('--max-budget must be a positive number');
+        process.exit(1);
+      }
+      body.maxBudgetUsd = v;
+    }
     if (opts.systemPrompt) body.systemPrompt = opts.systemPrompt;
     if (opts.appendSystemPrompt) body.appendSystemPrompt = opts.appendSystemPrompt;
-    if (opts.agents) body.agents = JSON.parse(opts.agents);
+    if (opts.agents) {
+      try {
+        body.agents = JSON.parse(opts.agents);
+      } catch (e) {
+        console.error(`Invalid JSON in --agents: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    }
     if (opts.agent) body.agent = opts.agent;
     if (opts.bare) body.bare = true;
     if (opts.worktree !== undefined) body.worktree = typeof opts.worktree === 'string' ? opts.worktree : true;
