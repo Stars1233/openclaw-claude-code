@@ -90,12 +90,12 @@ function resolveProviderModel(model: string): { provider: string; apiModel: stri
 
 /**
  * Claude Code CLI passes the real model via URL path:
- *   /v1/claude-code-proxy/real/<model>/messages
+ *   /real/<model>/v1/messages
  *
- * Extract the model name from the URL.
+ * Extract the model name from the URL (first segment after /real/).
  */
 function extractRealModel(url: string): string | null {
-  const match = url.match(/\/real\/(.+?)\/messages/);
+  const match = url.match(/\/real\/([^/]+)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -106,6 +106,12 @@ export function createProxyHandler(config: ProxyConfig | undefined, env: ProxyEn
    * Main proxy handler — receives Anthropic-format request, returns Anthropic-format response.
    */
   return async function handleProxy(req: HttpRequest, res: HttpResponse): Promise<boolean> {
+    // HEAD/GET probes from Claude Code CLI (no body) — respond 200
+    if (req.method === 'HEAD' || req.method === 'GET') {
+      res.status(200).json({ status: 'ok' });
+      return true;
+    }
+
     try {
       const body = (await req.json()) as AnthropicRequest;
 
@@ -233,7 +239,8 @@ async function forwardToGateway(
   originalModel: string,
 ): Promise<boolean> {
   const openaiReq = convertAnthropicToOpenAI(body);
-  openaiReq.model = apiModel;
+  // OpenClaw gateway requires model="openclaw" or "openclaw/<agentId>"
+  openaiReq.model = apiModel.startsWith('openclaw') ? apiModel : 'openclaw';
 
   // Inject thought signatures for Gemini
   injectThoughtSigs(openaiReq.messages as unknown as Array<Record<string, unknown>>);

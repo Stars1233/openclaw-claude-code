@@ -125,6 +125,49 @@ Team tools (`team_list`, `team_send`) work on all engines with engine-appropriat
 
 For Codex and Gemini, the "team" is the set of all active sessions managed by SessionManager. Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
 
+## Proxy: Any Model via OpenClaw Gateway
+
+Claude Code CLI only speaks Anthropic protocol. The built-in proxy translates Anthropic ↔ OpenAI format, letting you drive Claude Code with **any model** routed through the OpenClaw gateway.
+
+### Zero Config
+
+If OpenClaw gateway is running, everything is automatic:
+
+```typescript
+// No baseUrl, no env vars, no extra config
+await manager.startSession({
+  name: 'task',
+  engine: 'claude',
+  model: 'openclaw',        // gateway routes to your configured model
+  cwd: '/project',
+});
+```
+
+What happens behind the scenes:
+1. Plugin reads `~/.openclaw/openclaw.json` for gateway port + auth
+2. Starts a local proxy server (random port, auto-managed)
+3. Claude Code CLI sends Anthropic-format requests → proxy converts to OpenAI → gateway → any model
+
+### Manual Config (optional)
+
+Override with environment variables if needed:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_URL` | Auto-detected from openclaw.json | Gateway endpoint (e.g. `http://127.0.0.1:18789/v1`) |
+| `GATEWAY_KEY` | Auto-detected from openclaw.json | Gateway auth password/token |
+| `GEMINI_API_KEY` | - | Direct Gemini API access (bypasses gateway) |
+| `OPENAI_API_KEY` | - | Direct OpenAI API access (bypasses gateway) |
+
+### Architecture
+
+```
+Claude Code CLI (Anthropic format)
+  → Auto-proxy (Anthropic → OpenAI conversion)
+    → OpenClaw Gateway (/v1/chat/completions, model="openclaw")
+      → Any model (Gemini, GPT, local, etc.)
+```
+
 ## Adding a New Engine
 
 To add support for a new CLI (e.g., Aider, Cursor CLI):
