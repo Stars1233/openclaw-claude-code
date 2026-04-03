@@ -49,10 +49,20 @@ await manager.stopSession('backend-fix');
 ## Requirements
 
 - **Node.js >= 22**
-- **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
+- **Claude Code CLI >= 2.1** — `npm install -g @anthropic-ai/claude-code`
 - **OpenClaw >= 2026.3.0** — for plugin mode (optional)
-- **OpenAI Codex CLI** — `npm install -g @openai/codex` (optional, for codex engine)
-- **Gemini CLI** — `npm install -g @google/gemini-cli` (optional, for gemini engine)
+- **OpenAI Codex CLI >= 0.112** — `npm install -g @openai/codex` (optional, for codex engine)
+- **Gemini CLI >= 0.35** — `npm install -g @google/gemini-cli` (optional, for gemini engine)
+
+### Engine Authentication
+
+Each engine requires its own authentication before use:
+
+- **Claude Code** — run `claude /login` or set `ANTHROPIC_API_KEY`
+- **Codex** — run `codex login` or set `OPENAI_API_KEY`
+- **Gemini** — run `gemini login` or set `GEMINI_API_KEY`
+
+The plugin does not manage authentication — it expects each CLI to be ready to run.
 
 ## Configuration
 

@@ -120,14 +120,15 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
   }
 
   private async _runCodex(message: string, options: SessionSendOptions): Promise<TurnResult> {
-    const args: string[] = ['--full-auto', '--quiet'];
+    // Use `codex exec` for non-interactive execution (main `codex` requires TTY)
+    const args: string[] = ['exec', '--full-auto', '--skip-git-repo-check'];
 
     // Model
     const model = this.options.model;
     if (model) args.push('--model', model);
 
-    // CWD
-    if (this.options.cwd) args.push('--cwd', this.options.cwd);
+    // CWD via -C flag (exec subcommand supports it)
+    if (this.options.cwd) args.push('-C', this.options.cwd);
 
     // Prompt
     args.push(message);
@@ -142,7 +143,7 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
       const proc = spawn(this.codexBin, args, {
         cwd: this.options.cwd,
         env: { ...process.env },
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'], // stdin must be 'ignore' — codex waits for piped stdin
       });
       this.currentProc = proc;
 
@@ -200,8 +201,10 @@ export class PersistentCodexSession extends EventEmitter implements ISession {
         this.emit('result', event);
         this.emit('turn_complete', event);
 
-        if (code !== 0 && !stdout) {
-          reject(new Error(`Codex exited with code ${code}: ${stderr}`));
+        if (code !== 0) {
+          // Non-zero exit = error, even if there's stdout
+          const errMsg = stderr || `Codex exited with code ${code}`;
+          reject(new Error(errMsg));
         } else {
           resolve({ text: stdout, event });
         }

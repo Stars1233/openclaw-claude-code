@@ -179,13 +179,32 @@ src/
 | [CLI Reference](./docs/cli.md) | Command-line interface |
 | [Contributing](./CONTRIBUTING.md) | Dev setup, code style, PR guidelines |
 
+## Engine Compatibility
+
+All three engines are tested and verified in each release:
+
+| Engine | CLI | Tested Version | Invocation | Status |
+|--------|-----|---------------|------------|--------|
+| Claude Code | `claude` | 2.1.91 | Persistent subprocess, stream-json | **Fully supported** |
+| OpenAI Codex | `codex` | 0.118.0 | `codex exec --full-auto`, per-message | **Fully supported** |
+| Google Gemini | `gemini` | 0.36.0 | `gemini -p --output-format stream-json`, per-message | **Fully supported** |
+
+> **Note:** CLI versions evolve independently. If a new CLI version changes its flags or output format, the plugin may need an update. Pin your CLI versions in CI to avoid surprises.
+
+### Known Limitations
+
+- **Team tools** (`team_list`, `team_send`) work on all engines: Claude uses native agent teams; Codex/Gemini use cross-session messaging as a virtual team layer
+- **Codex/Gemini sessions** are one-shot per message (no persistent subprocess) — context is carried via working directory, not conversation history
+- **Council consensus** requires agents to output an explicit `[CONSENSUS: YES/NO]` tag — loose phrasing will default to NO
+- **Inbox delivered messages** are not retained in inbox history (only queued messages appear)
+
 ## Requirements
 
 - **Node.js >= 22**
-- **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
+- **Claude Code CLI >= 2.1** — `npm install -g @anthropic-ai/claude-code`
 - **OpenClaw >= 2026.3.0** (optional, for plugin mode)
-- **Codex CLI** (optional) — `npm install -g @openai/codex`
-- **Gemini CLI** (optional) — `npm install -g @google/gemini-cli`
+- **Codex CLI >= 0.112** (optional) — `npm install -g @openai/codex`
+- **Gemini CLI >= 0.35** (optional) — `npm install -g @google/gemini-cli`
 
 ## License
 

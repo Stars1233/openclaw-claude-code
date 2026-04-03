@@ -50,24 +50,9 @@ export function parseConsensus(content: string): boolean {
     }
   }
 
-  // Last resort: analyse final 8 non-empty lines
-  const lastLines = content
-    .split('\n')
-    .filter((l) => l.trim())
-    .slice(-8)
-    .join(' ')
-    .toLowerCase();
-
-  const hasNegative =
-    lastLines.includes('consensus: no') ||
-    lastLines.includes('consensus no') ||
-    /\b(?:not|no)\s+(?:reach(?:ed)?|achieve(?:d)?)\s+consensus\b/.test(lastLines) ||
-    /(?:未|没|沒有|没有)达成共识/.test(lastLines);
-  if (hasNegative) return false;
-
-  const hasPositive =
-    lastLines.includes('consensus: yes') || lastLines.includes('consensus yes') || /达成共识/.test(lastLines);
-  if (hasPositive) return true;
-
+  // No explicit consensus tag found — default to NO.
+  // The previous tail-fallback heuristic was removed because it caused false
+  // positives when agents echoed back prompt instructions containing consensus
+  // keywords without actually voting.
   return false;
 }

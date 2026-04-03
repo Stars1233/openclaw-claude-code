@@ -23,15 +23,15 @@ describe('parseConsensus', () => {
     { name: 'Chinese voting YES', content: '共识投票：YES', expected: true },
     { name: '[CONSENSUS]: NO', content: '[CONSENSUS]: NO', expected: false },
 
-    // Tail fallback — positive
+    // Variant match (not tail fallback — these match the variant regex pattern)
     { name: 'tail: consensus yes', content: 'Text here\nconsensus yes', expected: true },
-    { name: 'tail: 达成共识', content: 'Report\n我们已达成共识', expected: true },
-
-    // Tail fallback — negative
-    { name: 'tail: did not reach consensus', content: 'Summary: we did not reach consensus yet', expected: false },
-    { name: 'tail: 未达成共识', content: 'Report\n我们未达成共识', expected: false },
-    { name: 'tail: 没有达成共识', content: 'Report\n我们没有达成共识', expected: false },
     { name: 'tail: consensus no (keyword)', content: 'Some text\nconsensus no', expected: false },
+
+    // No explicit tag — default to NO (tail fallback removed to prevent false positives)
+    { name: 'no Chinese consensus tag', content: 'Report\n我们已达成共识', expected: false },
+    { name: 'no negative Chinese tag', content: 'Report\n我们未达成共识', expected: false },
+    { name: 'no negative Chinese tag 2', content: 'Report\n我们没有达成共识', expected: false },
+    { name: 'no consensus reached', content: 'Summary: we did not reach consensus yet', expected: false },
 
     // Default
     { name: 'no vote at all', content: 'Just some random text with no vote', expected: false },

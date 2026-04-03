@@ -9,9 +9,9 @@ SessionManager
 ├── engine: 'claude' → PersistentClaudeSession
 │   └── Wraps: claude CLI (stream-json protocol, persistent subprocess)
 ├── engine: 'codex'  → PersistentCodexSession
-│   └── Wraps: codex CLI (--full-auto --quiet, per-message spawning)
+│   └── Wraps: codex exec --full-auto (per-message spawning)
 └── engine: 'gemini' → PersistentGeminiSession
-    └── Wraps: gemini CLI (--output-format stream-json, per-message spawning)
+    └── Wraps: gemini -p --output-format stream-json (per-message spawning)
 ```
 
 ## Supported Engines
@@ -36,12 +36,14 @@ await manager.startSession({
 
 ### OpenAI Codex (`engine: 'codex'`)
 
-Wraps the `codex` CLI in quiet + full-auto mode. Each `send()` spawns a new process.
+Wraps the `codex exec` subcommand in full-auto mode. Each `send()` spawns a new process.
 
+- Non-interactive execution via `codex exec --full-auto`
+- Working directory passed via `-C` flag
 - One-shot execution per message (no persistent subprocess)
 - Working directory carries accumulated changes across sends
 - Token estimation from response length (~4 chars/token)
-- Requires `codex` CLI installed: `npm install -g @openai/codex`
+- Requires `codex` CLI >= 0.112: `npm install -g @openai/codex`
 
 ```typescript
 await manager.startSession({
@@ -110,6 +112,18 @@ interface ISession {
   emit(event, ...args): boolean;
 }
 ```
+
+## Team Tools Across Engines
+
+Team tools (`team_list`, `team_send`) work on all engines with engine-appropriate implementations:
+
+| Engine | `team_list` | `team_send` |
+|--------|------------|-------------|
+| Claude | Native `/team` command | Native `@teammate` command |
+| Codex | Lists other active SessionManager sessions | Routes via cross-session inbox |
+| Gemini | Lists other active SessionManager sessions | Routes via cross-session inbox |
+
+For Codex and Gemini, the "team" is the set of all active sessions managed by SessionManager. Messages are delivered via the inbox system — idle sessions receive immediately, busy sessions queue for later delivery.
 
 ## Adding a New Engine
 

@@ -226,8 +226,12 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         this.emit('result', event);
         this.emit('turn_complete', event);
 
-        if (code !== 0 && !resultText.value) {
-          reject(new Error(`Gemini exited with code ${code}: ${stderr}`));
+        // Exit code 53 = turn limit — a valid completion, not an error
+        if (code !== 0 && code !== 53 && !resultText.value) {
+          reject(new Error(stderr || `Gemini exited with code ${code}`));
+        } else if (code !== 0 && code !== 53) {
+          // Non-zero exit with output (e.g., echoed prompt) — still an error
+          reject(new Error(stderr || `Gemini exited with code ${code}`));
         } else {
           resolve({ text: resultText.value, event });
         }
@@ -255,6 +259,8 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
 
     switch (type) {
       case 'message': {
+        // Skip user messages (prompt echo) — only collect assistant responses
+        if (event.role === 'user') break;
         const text = (event.content as string) || '';
         if (text) {
           resultText.value += text;

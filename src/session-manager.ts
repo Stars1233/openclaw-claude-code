@@ -629,16 +629,52 @@ export class SessionManager {
 
   async teamList(name: string): Promise<string> {
     const managed = this._getSession(name);
-    const result = await managed.session.send('/team', { waitForComplete: true, timeout: 30_000 });
-    return 'text' in result ? result.text : '';
+    const engine = managed.config.engine || 'claude';
+
+    // Claude: use native /team command
+    if (engine === 'claude') {
+      const result = await managed.session.send('/team', { waitForComplete: true, timeout: 30_000 });
+      return 'text' in result ? result.text : '';
+    }
+
+    // Codex/Gemini: list other active sessions as virtual teammates
+    const teammates: string[] = [];
+    for (const [sessionName, m] of this.sessions) {
+      if (sessionName === name) continue;
+      const eng = m.config.engine || 'claude';
+      const stats = m.session.getStats();
+      const status = m.session.isBusy ? 'busy' : m.session.isPaused ? 'paused' : 'idle';
+      teammates.push(`- ${sessionName} (${eng}, ${status}, ${stats.turns} turns)`);
+    }
+    return teammates.length > 0
+      ? `Virtual team (${teammates.length} sessions):\n${teammates.join('\n')}`
+      : 'No other active sessions';
   }
 
   async teamSend(name: string, teammate: string, message: string): Promise<SendResult> {
     const managed = this._getSession(name);
-    managed.lastActivity = Date.now();
-    const result = await managed.session.send(`@${teammate} ${message}`, { waitForComplete: true, timeout: 120_000 });
+    const engine = managed.config.engine || 'claude';
+
+    // Claude: use native @teammate command
+    if (engine === 'claude') {
+      managed.lastActivity = Date.now();
+      const result = await managed.session.send(`@${teammate} ${message}`, { waitForComplete: true, timeout: 120_000 });
+      return {
+        output: 'text' in result ? result.text : '',
+        sessionId: managed.claudeSessionId,
+        events: [],
+      };
+    }
+
+    // Codex/Gemini: route via cross-session messaging
+    if (!this.sessions.has(teammate)) {
+      throw new Error(`Target session '${teammate}' not found. Use team_list to see available sessions.`);
+    }
+    const deliveryResult = await this.sessionSendTo(name, teammate, message, `team message from ${name}`);
     return {
-      output: 'text' in result ? result.text : '',
+      output: deliveryResult.delivered
+        ? `Message delivered to ${teammate}`
+        : `Message queued for ${teammate} (session is busy)`,
       sessionId: managed.claudeSessionId,
       events: [],
     };
@@ -1045,8 +1081,20 @@ export class SessionManager {
 
     const sendResult = await this.sendMessage(sessionName, planPrompt, { timeout });
 
-    result.plan = sendResult.output;
-    result.status = 'completed';
+    // Detect error responses: empty output or output that looks like an error message
+    const output = sendResult.output?.trim() || '';
+    const looksLikeError =
+      !output ||
+      /^(Error|not logged in|authentication|auth failed|permission denied)/i.test(output) ||
+      (sendResult.error && sendResult.error.length > 0);
+
+    if (looksLikeError) {
+      result.status = 'error';
+      result.error = sendResult.error || output || 'Empty response from engine';
+    } else {
+      result.plan = output;
+      result.status = 'completed';
+    }
     result.endTime = new Date().toISOString();
   }
 
