@@ -8,6 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as http from 'node:http';
 import { createRequire } from 'node:module';
 
 const _require = createRequire(import.meta.url);
@@ -167,6 +168,8 @@ export class SessionManager {
   private pluginConfig: PluginConfig;
   private persistedSessions: Map<string, PersistedSession>;
   private _debouncedSave: () => void;
+  private _proxyServer: http.Server | null = null;
+  private _proxyPort: number | null = null;
 
   constructor(config?: Partial<PluginConfig>) {
     this.pluginConfig = {
@@ -243,7 +246,22 @@ export class SessionManager {
       fullConfig.resolvedModel = this._resolveModel(fullConfig.model, fullConfig.modelOverrides);
     }
 
+    // Auto-inject proxy baseUrl for non-Claude models on the claude engine.
+    // Starts a local proxy server that converts Anthropic → OpenAI format
+    // and forwards to the OpenClaw gateway. Zero config required.
     const engine: EngineType = fullConfig.engine || 'claude';
+    if (engine === 'claude' && fullConfig.resolvedModel && !fullConfig.baseUrl) {
+      const CLAUDE_PATTERNS = ['sonnet', 'opus', 'haiku', 'claude-', 'anthropic/', '/claude'];
+      const isClaudeModel = CLAUDE_PATTERNS.some(
+        (p) => fullConfig.resolvedModel!.includes(p) || fullConfig.resolvedModel!.startsWith(p),
+      );
+      if (!isClaudeModel) {
+        const proxyPort = await this._ensureProxyServer();
+        if (proxyPort) {
+          fullConfig.baseUrl = `http://127.0.0.1:${proxyPort}`;
+        }
+      }
+    }
     const session = this._createSession(engine, fullConfig);
 
     session.on('log', (...args: unknown[]) => console.log(`[Session:${name}]`, ...args));
@@ -761,8 +779,108 @@ export class SessionManager {
       console.log(`[SessionManager] Stopped session: ${name}`);
     }
     this.sessions.clear();
+    // Stop proxy server
+    if (this._proxyServer) {
+      this._proxyServer.close();
+      this._proxyServer = null;
+      this._proxyPort = null;
+    }
     // Persist final state (TTL-expired sessions already removed by cleanup)
     savePersistedSessions(this.persistedSessions);
+  }
+
+  // ─── Auto Proxy ───────────────────────────────────────────────────────
+
+  /**
+   * Read OpenClaw gateway config from ~/.openclaw/openclaw.json.
+   * Returns { url, key } or null if not configured.
+   */
+  private _readGatewayConfig(): { url: string; key: string } | null {
+    try {
+      const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+      if (!fs.existsSync(configPath)) return null;
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+      const gw = config.gateway as Record<string, unknown> | undefined;
+      if (!gw) return null;
+
+      const port = (gw.port as number) || 18789;
+      const auth = gw.auth as Record<string, string> | undefined;
+      // Support both password and token auth modes
+      const key = auth?.password || auth?.token || '';
+
+      return { url: `http://127.0.0.1:${port}/v1`, key };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Start a local proxy server (if not running) that converts Anthropic format
+   * to OpenAI format and forwards to the OpenClaw gateway.
+   * Returns the proxy port, or null if gateway is not available.
+   */
+  private async _ensureProxyServer(): Promise<number | null> {
+    if (this._proxyPort) return this._proxyPort;
+
+    // Auto-detect gateway config
+    const gwConfig = this._readGatewayConfig();
+    const gatewayUrl = process.env.GATEWAY_URL || gwConfig?.url;
+    const gatewayKey = process.env.GATEWAY_KEY || gwConfig?.key;
+
+    if (!gatewayUrl) {
+      console.log('[SessionManager] No OpenClaw gateway found — proxy not available');
+      return null;
+    }
+
+    // Lazy import to avoid circular deps
+    const { createProxyHandler } = await import('./proxy/handler.js');
+    const proxyHandler = createProxyHandler(undefined, {
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+      openaiApiKey: process.env.OPENAI_API_KEY,
+      geminiApiKey: process.env.GEMINI_API_KEY,
+      gatewayUrl,
+      gatewayKey,
+    });
+
+    return new Promise((resolve) => {
+      const server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('end', () => {
+          const httpReq = {
+            method: req.method || 'GET',
+            url: req.url || '/',
+            headers: req.headers as Record<string, string>,
+            json: async () => JSON.parse(body),
+          };
+          const httpRes = {
+            status: (code: number) => { res.statusCode = code; return httpRes; },
+            json: (data: unknown) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)); },
+            setHeader: (k: string, v: string) => res.setHeader(k, v),
+            write: (data: string) => res.write(data),
+            end: () => res.end(),
+            flushHeaders: () => res.flushHeaders(),
+          };
+          proxyHandler(httpReq, httpRes).catch((err) => {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: (err as Error).message }));
+          });
+        });
+      });
+
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server.address() as { port: number };
+        this._proxyServer = server;
+        this._proxyPort = addr.port;
+        console.log(`[SessionManager] Auto-proxy started on port ${addr.port} (gateway: ${gatewayUrl})`);
+        resolve(addr.port);
+      });
+
+      server.on('error', (err) => {
+        console.error('[SessionManager] Failed to start proxy server:', err.message);
+        resolve(null);
+      });
+    });
   }
 
   // ─── Private ───────────────────────────────────────────────────────────

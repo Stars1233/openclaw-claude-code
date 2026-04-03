@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-04-03
+
+### Added
+- **Zero-config proxy** — non-Claude models on the `claude` engine automatically start a local proxy server that converts Anthropic → OpenAI format and forwards to the OpenClaw gateway. Gateway port and auth are auto-detected from `~/.openclaw/openclaw.json`. No env vars, no baseUrl, no config changes needed
+- Proxy documentation in `skills/references/multi-engine.md`
+
+### Fixed
+- **Proxy model URL extraction** — `extractRealModel` regex fixed to handle Claude Code CLI's `/real/<model>/v1/messages` URL pattern
+- **Gateway model name** — `forwardToGateway` now sends `model: "openclaw"` as required by gateway
+- **HEAD request handling** — proxy returns 200 for CLI probe requests instead of JSON parse errors
+
 ## [2.6.0] - 2026-04-03
 
 ### Changed
