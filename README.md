@@ -35,7 +35,7 @@ await manager.startSession({ name: 'task', cwd: '/project' });
 const result = await manager.sendMessage('task', 'Fix the failing tests');
 ```
 
-See [Getting Started](./docs/getting-started.md) for full setup guide.
+See [Getting Started](./skills/references/getting-started.md) for full setup guide.
 
 ## Features
 
@@ -54,7 +54,7 @@ await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'o4-min
 await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-pro' });
 ```
 
-See [Multi-Engine](./docs/multi-engine.md) for architecture and adding new engines.
+See [Multi-Engine](./skills/references/multi-engine.md) for architecture and adding new engines.
 
 ### Multi-Agent Council
 
@@ -72,7 +72,7 @@ const session = manager.councilStart('Build a REST API with auth', {
 });
 ```
 
-See [Council](./docs/council.md) for the full collaboration protocol.
+See [Council](./skills/references/council.md) for the full collaboration protocol.
 
 ### 27 Tools
 
@@ -86,7 +86,7 @@ See [Council](./docs/council.md) for the full collaboration protocol.
 | Ultraplan | `ultraplan_start`, `ultraplan_status` |
 | Ultrareview | `ultrareview_start`, `ultrareview_status` |
 
-See [Tools Reference](./docs/tools.md) for complete API.
+See [Tools Reference](./skills/references/tools.md) for complete API.
 
 ### Session Inbox
 
@@ -169,14 +169,14 @@ src/
 
 | Doc | Description |
 |-----|-------------|
-| [Getting Started](./docs/getting-started.md) | Installation, configuration, first session |
-| [Sessions](./docs/sessions.md) | Persistent sessions, resume, model switching, cost tracking |
-| [Session Inbox](./docs/inbox.md) | Cross-session messaging |
-| [Multi-Engine](./docs/multi-engine.md) | Claude + Codex + Gemini engines, ISession interface |
-| [Council](./docs/council.md) | Multi-agent collaboration, worktree isolation, consensus voting |
-| [Ultraplan & Ultrareview](./docs/ultra.md) | Deep planning and fleet code review |
-| [Tools Reference](./docs/tools.md) | Complete tool API (27 tools) |
-| [CLI Reference](./docs/cli.md) | Command-line interface |
+| [Getting Started](./skills/references/getting-started.md) | Installation, configuration, first session |
+| [Sessions](./skills/references/sessions.md) | Persistent sessions, resume, model switching, cost tracking |
+| [Session Inbox](./skills/references/inbox.md) | Cross-session messaging |
+| [Multi-Engine](./skills/references/multi-engine.md) | Claude + Codex + Gemini engines, ISession interface |
+| [Council](./skills/references/council.md) | Multi-agent collaboration, worktree isolation, consensus voting |
+| [Ultraplan & Ultrareview](./skills/references/ultra.md) | Deep planning and fleet code review |
+| [Tools Reference](./skills/references/tools.md) | Complete tool API (27 tools) |
+| [CLI Reference](./skills/references/cli.md) | Command-line interface |
 | [Contributing](./CONTRIBUTING.md) | Dev setup, code style, PR guidelines |
 
 ## Engine Compatibility

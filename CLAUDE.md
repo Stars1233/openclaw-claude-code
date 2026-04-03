@@ -41,7 +41,7 @@ npx tsx test-integration.ts
 - **Strict TypeScript** — no `any` (eslint warns), full type annotations
 - **Lazy initialization** — SessionManager created on first tool call, not at plugin load
 - **Engine-agnostic** — all session engines implement `ISession` interface (types.ts)
-- **Adding a new tool** — register in `src/index.ts`, add to `openclaw.plugin.json` contracts.tools, document in `docs/tools.md`
+- **Adding a new tool** — register in `src/index.ts`, add to `openclaw.plugin.json` contracts.tools, document in `skills/references/tools.md`
 
 ## Testing
 
