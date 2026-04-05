@@ -79,7 +79,7 @@ claude-code-skill session-stop myproject
 | Option | Description |
 |--------|-------------|
 | `--engine` | `claude` (default), `codex`, `gemini`, `cursor` |
-| `--model` | Model name or alias (`opus`, `sonnet`, `haiku`, `o4-mini`, `gemini-pro`, `sonnet-4`) |
+| `--model` | Model name or alias (`opus`, `sonnet`, `haiku`, `gpt-5.4`, `gemini-pro`, `composer-2`) |
 | `--permission-mode` | `acceptEdits`, `auto`, `plan`, `bypassPermissions`, `default` |
 | `--effort` | `low`, `medium`, `high`, `max`, `auto` |
 | `--max-budget` | Cost limit in USD |

@@ -52,10 +52,10 @@ Drive Claude Code, OpenAI Codex, Google Gemini, and Cursor Agent through a unifi
 await manager.startSession({ name: 'claude-task', engine: 'claude', model: 'opus' });
 
 // Codex engine
-await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'o4-mini' });
+await manager.startSession({ name: 'codex-task', engine: 'codex', model: 'gpt-5.4' });
 
 // Gemini engine
-await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-pro' });
+await manager.startSession({ name: 'gemini-task', engine: 'gemini', model: 'gemini-3.1-pro-preview' });
 
 // Cursor Agent engine
 await manager.startSession({ name: 'cursor-task', engine: 'cursor', model: 'sonnet-4' });
@@ -70,9 +70,9 @@ Multiple agents collaborate in parallel on the same codebase with git worktree i
 ```typescript
 const session = manager.councilStart('Build a REST API with auth', {
   agents: [
-    { name: 'Architect', emoji: '🏗️', persona: 'System design', engine: 'claude', model: 'opus' },
-    { name: 'Engineer', emoji: '⚙️', persona: 'Implementation', engine: 'codex', model: 'o4-mini' },
-    { name: 'Reviewer', emoji: '🔍', persona: 'Code review', engine: 'claude', model: 'sonnet' },
+    { name: 'Planner', emoji: '🟠', persona: 'Requirements & architecture', engine: 'claude', model: 'opus' },
+    { name: 'Generator', emoji: '🟢', persona: 'Implementation per plan', engine: 'codex', model: 'gpt-5.4' },
+    { name: 'Evaluator', emoji: '🔵', persona: 'Independent verification', engine: 'claude', model: 'sonnet' },
   ],
   maxRounds: 10,
   projectDir: '/tmp/api-project',

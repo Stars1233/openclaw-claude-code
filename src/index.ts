@@ -448,7 +448,7 @@ const plugin = {
           projectDir: { type: 'string', description: 'Working directory for the council project' },
           agents: {
             type: 'array',
-            description: 'Agent personas. Defaults to 3-agent team (Architect, Engineer, Reviewer) if omitted.',
+            description: 'Agent personas. Defaults to 3-agent team (Planner, Generator, Evaluator) if omitted.',
             items: {
               type: 'object',
               properties: {

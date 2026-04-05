@@ -51,7 +51,7 @@ Wraps the `codex exec` subcommand in full-auto mode. Each `send()` spawns a new 
 await manager.startSession({
   name: 'codex-task',
   engine: 'codex',
-  model: 'o4-mini',
+  model: 'gpt-5.4',
   cwd: '/project',
 });
 ```
@@ -70,7 +70,7 @@ Wraps the `gemini` CLI with `--output-format stream-json`. Each `send()` spawns 
 await manager.startSession({
   name: 'gemini-task',
   engine: 'gemini',
-  model: 'gemini-pro',   // alias for gemini-2.5-pro
+  model: 'gemini-3.1-pro-preview',
   cwd: '/project',
 });
 ```

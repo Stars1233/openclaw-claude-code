@@ -1035,25 +1035,25 @@ export function getDefaultCouncilConfig(projectDir: string): CouncilConfig {
     name: 'Three Minds Council',
     agents: [
       {
-        name: 'GPT',
-        emoji: '🟢',
+        name: 'Planner',
+        emoji: '🔵',
         persona:
-          'You are a pragmatic engineer. You focus on implementation quality, error handling, edge cases, and performance.',
-        role: 'gpt',
+          'You are a technical planner. You decompose requirements into actionable plans, define product context and constraints, outline high-level architecture decisions, and deliberately avoid premature implementation details. Your goal is a clear, phased blueprint that other agents can execute against.',
+        role: 'gemini',
       },
       {
-        name: 'Claude',
+        name: 'Generator',
         emoji: '🟠',
         persona:
-          'You are a system architect. You focus on code structure, design patterns, scalability, and long-term maintainability.',
+          'You are an implementation engineer. You execute strictly according to plan.md, delivering working code sprint by sprint. You prioritize correctness, shipping velocity, and minimal deviation from the plan. When the plan is ambiguous, you fill gaps conservatively without reinventing requirements.',
         role: 'claude',
       },
       {
-        name: 'Gemini',
-        emoji: '🔵',
+        name: 'Evaluator',
+        emoji: '🟢',
         persona:
-          'You are a code reviewer. You focus on code standards, potential bugs, security issues, and documentation.',
-        role: 'gemini',
+          'You are an independent quality gate. You do not trust that the implementation is correct — you verify it. You validate from real user paths, hunt for broken UX, edge cases, regressions, and inconsistencies. You must give an explicit blocking issue list or a reasoned approval. You are not a polite reviewer; you are the acceptance authority.',
+        role: 'gpt',
       },
     ],
     maxRounds: DEFAULT_MAX_ROUNDS,

@@ -292,15 +292,30 @@ export interface ModelPricing {
 }
 
 const DEFAULT_MODEL_PRICING: Record<string, ModelPricing> = {
-  'claude-opus-4-6': { input: 15, output: 75, cached: 1.5 },
+  // Anthropic Claude 4.6
+  'claude-opus-4-6': { input: 5, output: 25, cached: 0.5 },
   'claude-sonnet-4-6': { input: 3, output: 15, cached: 0.3 },
-  'claude-haiku-4-5': { input: 0.8, output: 4, cached: 0.08 },
+  'claude-haiku-4-5': { input: 1, output: 5, cached: 0.1 },
+  // OpenAI GPT-5.4 series (current)
+  'gpt-5.4': { input: 2.5, output: 15, cached: 0.25 },
+  'gpt-5.4-mini': { input: 0.75, output: 4.5, cached: 0.075 },
+  'gpt-5.4-nano': { input: 0.2, output: 1.25, cached: 0.02 },
+  // OpenAI reasoning
+  o3: { input: 2, output: 8 },
+  'o4-mini': { input: 0.55, output: 2.2 },
+  'codex-mini-latest': { input: 1.5, output: 6 },
+  // Google Gemini 3.x (current)
+  'gemini-3.1-pro-preview': { input: 2, output: 12 },
+  'gemini-3-flash-preview': { input: 0.5, output: 3 },
+  // Google Gemini 2.5 (stable, still available)
   'gemini-2.5-pro': { input: 1.25, output: 10, cached: 0.315 },
   'gemini-2.5-flash': { input: 0.15, output: 0.6, cached: 0.0375 },
+  // Cursor Composer
+  'composer-2-fast': { input: 1.5, output: 7.5 },
+  'composer-2': { input: 0.5, output: 2.5 },
+  'composer-1.5': { input: 3.5, output: 17.5 },
+  // Legacy (kept for backward compat with existing sessions)
   'gpt-4o': { input: 2.5, output: 10, cached: 1.25 },
-  'o4-mini': { input: 1.1, output: 4.4 },
-  o3: { input: 10, output: 40 },
-  'codex-mini': { input: 1.5, output: 6 },
 };
 
 /** Model pricing table — mutable copy of defaults, can be overridden at runtime. */
@@ -343,8 +358,8 @@ export const MODEL_ALIASES: Record<string, string> = {
   opus: 'claude-opus-4-6',
   sonnet: 'claude-sonnet-4-6',
   haiku: 'claude-haiku-4-5',
-  'gemini-flash': 'gemini-2.5-flash',
-  'gemini-pro': 'gemini-2.5-pro',
+  'gemini-flash': 'gemini-3-flash-preview',
+  'gemini-pro': 'gemini-3.1-pro-preview',
 };
 
 // ─── Inbox Types ────────────────────────────────────────────────────────────

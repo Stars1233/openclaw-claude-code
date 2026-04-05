@@ -28,19 +28,33 @@ describe('resolveEngineAndModel', () => {
     expect(resolveEngineAndModel('haiku')).toEqual({ engine: 'claude', model: 'claude-haiku-4-5' });
   });
 
-  it('maps GPT models to codex engine', () => {
-    expect(resolveEngineAndModel('gpt-4o')).toEqual({ engine: 'codex', model: 'gpt-4o' });
-    expect(resolveEngineAndModel('gpt-4.1')).toEqual({ engine: 'codex', model: 'gpt-4.1' });
+  it('maps GPT-5.4 models to codex engine', () => {
+    expect(resolveEngineAndModel('gpt-5.4')).toEqual({ engine: 'codex', model: 'gpt-5.4' });
+    expect(resolveEngineAndModel('gpt-5.4-mini')).toEqual({ engine: 'codex', model: 'gpt-5.4-mini' });
+    expect(resolveEngineAndModel('gpt-5.4-nano')).toEqual({ engine: 'codex', model: 'gpt-5.4-nano' });
   });
 
-  it('maps o-series models to codex engine', () => {
+  it('maps o-series and codex models to codex engine', () => {
     expect(resolveEngineAndModel('o3')).toEqual({ engine: 'codex', model: 'o3' });
     expect(resolveEngineAndModel('o4-mini')).toEqual({ engine: 'codex', model: 'o4-mini' });
+    expect(resolveEngineAndModel('codex-mini-latest')).toEqual({ engine: 'codex', model: 'codex-mini-latest' });
   });
 
   it('maps gemini models to gemini engine by prefix', () => {
-    expect(resolveEngineAndModel('gemini-2.5-pro')).toEqual({ engine: 'gemini', model: 'gemini-2.5-pro' });
-    expect(resolveEngineAndModel('gemini-2.5-flash')).toEqual({ engine: 'gemini', model: 'gemini-2.5-flash' });
+    expect(resolveEngineAndModel('gemini-3.1-pro-preview')).toEqual({
+      engine: 'gemini',
+      model: 'gemini-3.1-pro-preview',
+    });
+    expect(resolveEngineAndModel('gemini-3-flash-preview')).toEqual({
+      engine: 'gemini',
+      model: 'gemini-3-flash-preview',
+    });
+  });
+
+  it('maps composer models to cursor engine', () => {
+    expect(resolveEngineAndModel('composer-2-fast')).toEqual({ engine: 'cursor', model: 'composer-2-fast' });
+    expect(resolveEngineAndModel('composer-2')).toEqual({ engine: 'cursor', model: 'composer-2' });
+    expect(resolveEngineAndModel('composer-1.5')).toEqual({ engine: 'cursor', model: 'composer-1.5' });
   });
 
   it('defaults unknown models to claude engine with passthrough', () => {
