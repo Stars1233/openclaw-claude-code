@@ -21,12 +21,33 @@ This project wraps coding CLIs and exposes their capabilities as a clean, tool-b
 
 ## Quick Start
 
-```bash
-# As OpenClaw plugin (--dangerously-force-unsafe-install is required
-# because this plugin spawns CLI subprocesses via child_process)
-openclaw plugins install @enderfga/openclaw-claude-code --dangerously-force-unsafe-install
+**One-line install** (recommended):
 
-# Or standalone (no flag needed)
+```bash
+curl -fsSL https://raw.githubusercontent.com/Enderfga/openclaw-claude-code/main/install.sh | bash
+```
+
+This installs via npm, symlinks into OpenClaw extensions, and configures `openclaw.json` automatically.
+
+**Manual install:**
+
+```bash
+# 1. Install from npm
+npm install -g @enderfga/openclaw-claude-code
+
+# 2. Symlink into OpenClaw extensions
+ln -s $(npm root -g)/@enderfga/openclaw-claude-code ~/.openclaw/extensions/openclaw-claude-code
+
+# 3. Add to openclaw.json plugins.entries:
+#    "openclaw-claude-code": {}
+
+# 4. Restart gateway
+openclaw gateway restart
+```
+
+**Standalone** (no OpenClaw):
+
+```bash
 npm install -g @enderfga/openclaw-claude-code
 claude-code-skill serve
 ```
