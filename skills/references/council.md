@@ -70,7 +70,7 @@ Every agent must include `[CONSENSUS: YES]` or `[CONSENSUS: NO]` at the end of e
 }
 ```
 
-This starts a 3-agent council (Architect, Engineer, Reviewer) with default settings.
+This starts a 3-agent council (Planner, Generator, Evaluator) with default settings.
 
 ### Via TypeScript
 
@@ -83,9 +83,9 @@ const session = manager.councilStart(
   'Build a REST API with authentication',
   {
     agents: [
-      { name: 'Architect', emoji: '🏗️', persona: 'System architect focused on scalability' },
-      { name: 'Engineer', emoji: '⚙️', persona: 'Implementation engineer focused on code quality' },
-      { name: 'Reviewer', emoji: '🔍', persona: 'Code reviewer focused on bugs and security' },
+      { name: 'Planner', emoji: '🟠', persona: 'Technical planner focused on requirements decomposition and architecture' },
+      { name: 'Generator', emoji: '🟢', persona: 'Implementation engineer focused on shipping correct code per plan' },
+      { name: 'Evaluator', emoji: '🔵', persona: 'Independent quality gate focused on verification and acceptance' },
     ],
     maxRounds: 10,
     projectDir: '/tmp/my-api-project',
@@ -105,8 +105,8 @@ Agents can use different engines and models:
 {
   "agents": [
     { "name": "Claude", "emoji": "🎭", "engine": "claude", "model": "opus", "persona": "Deep reasoning" },
-    { "name": "Codex", "emoji": "🧠", "engine": "codex", "model": "o4-mini", "persona": "Fast implementation" },
-    { "name": "Gemini", "emoji": "💎", "engine": "claude", "model": "gemini-pro", "baseUrl": "http://proxy:8082", "persona": "Creative solutions" }
+    { "name": "Codex", "emoji": "🧠", "engine": "codex", "model": "gpt-5.4", "persona": "Fast implementation" },
+    { "name": "Gemini", "emoji": "💎", "engine": "gemini", "model": "gemini-3.1-pro-preview", "persona": "Creative solutions" }
   ]
 }
 ```

@@ -41,7 +41,8 @@ The server exposes an OpenAI-compatible chat completions endpoint, enabling any 
 
 **Model routing:** The `model` field auto-routes to the correct engine:
 - `claude-*`, `opus`, `sonnet`, `haiku` → Claude engine
-- `gpt-*`, `o3`, `o4-mini` → Codex engine
+- `gpt-*` → Codex engine
+- `composer-*` → Cursor engine
 - `gemini-*` → Gemini engine
 
 **CORS:** `/v1/` paths allow cross-origin requests by default. Set `OPENCLAW_CORS_ORIGINS=*` to allow all origins on all paths.

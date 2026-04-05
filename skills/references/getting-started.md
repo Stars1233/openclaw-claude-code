@@ -82,7 +82,7 @@ The server exposes an OpenAI-compatible API at `/v1/chat/completions`. Point any
 |---------|-------|
 | API Base URL | `http://127.0.0.1:18796/v1` |
 | API Key | Any value (or blank if no `OPENCLAW_SERVER_TOKEN` set) |
-| Model | `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-4o`, `gemini-2.5-pro`, etc. |
+| Model | `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-5.4`, `gemini-3.1-pro-preview`, etc. |
 
 Tested with: ChatGPT-Next-Web, Open WebUI, LobeChat.
 
@@ -105,8 +105,8 @@ In `~/.openclaw/openclaw.json`:
           "sessionTtlMinutes": 120,
           "proxy": {
             "enabled": false,
-            "bigModel": "gemini-2.5-pro",
-            "smallModel": "gemini-2.5-flash"
+            "bigModel": "gemini-3.1-pro-preview",
+            "smallModel": "gemini-3-flash-preview"
           }
         }
       }

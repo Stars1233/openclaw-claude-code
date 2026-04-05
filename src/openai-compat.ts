@@ -72,17 +72,24 @@ const MODEL_ENGINE_MAP: Record<string, EngineModelMapping> = {
   opus: { engine: 'claude', model: 'claude-opus-4-6' },
   sonnet: { engine: 'claude', model: 'claude-sonnet-4-6' },
   haiku: { engine: 'claude', model: 'claude-haiku-4-5' },
-  // OpenAI models → codex engine
-  'gpt-4o': { engine: 'codex', model: 'gpt-4o' },
-  'gpt-4.1': { engine: 'codex', model: 'gpt-4.1' },
+  // OpenAI GPT-5.4 series (current flagship) → codex engine
+  'gpt-5.4': { engine: 'codex', model: 'gpt-5.4' },
+  'gpt-5.4-mini': { engine: 'codex', model: 'gpt-5.4-mini' },
+  'gpt-5.4-nano': { engine: 'codex', model: 'gpt-5.4-nano' },
+  // OpenAI o-series reasoning → codex engine
   o3: { engine: 'codex', model: 'o3' },
-  'o3-mini': { engine: 'codex', model: 'o3-mini' },
   'o4-mini': { engine: 'codex', model: 'o4-mini' },
+  'codex-mini-latest': { engine: 'codex', model: 'codex-mini-latest' },
+  // Cursor Composer models → cursor engine
+  'composer-2-fast': { engine: 'cursor', model: 'composer-2-fast' },
+  'composer-2': { engine: 'cursor', model: 'composer-2' },
+  'composer-1.5': { engine: 'cursor', model: 'composer-1.5' },
 };
 
 /**
  * Resolve an OpenAI model string to engine + model.
- * Gemini models → gemini engine, GPT/o-series → codex, default → claude.
+ * Pattern-based: gemini-* → gemini, gpt/o/codex-* → codex, composer-* → cursor, default → claude.
+ * Any model string is accepted — unknown models pass through to the claude engine.
  */
 export function resolveEngineAndModel(model: string): EngineModelMapping {
   // Exact match in map
@@ -91,8 +98,9 @@ export function resolveEngineAndModel(model: string): EngineModelMapping {
 
   // Pattern-based detection
   if (model.startsWith('gemini')) return { engine: 'gemini', model };
-  if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4'))
+  if (model.startsWith('gpt') || model.startsWith('o3') || model.startsWith('o4') || model.startsWith('codex'))
     return { engine: 'codex', model };
+  if (model.startsWith('composer') || model.startsWith('cursor')) return { engine: 'cursor', model };
 
   // Default: claude engine, pass model through
   return { engine: 'claude', model };
@@ -202,14 +210,18 @@ export function getModelList(): { object: string; data: Array<{ id: string; obje
   return {
     object: 'list',
     data: [
+      // Anthropic — strong / fast
       { id: 'claude-opus-4-6', object: 'model', owned_by: 'anthropic' },
-      { id: 'claude-sonnet-4-6', object: 'model', owned_by: 'anthropic' },
       { id: 'claude-haiku-4-5', object: 'model', owned_by: 'anthropic' },
-      { id: 'gpt-4o', object: 'model', owned_by: 'openai' },
-      { id: 'o3', object: 'model', owned_by: 'openai' },
-      { id: 'o4-mini', object: 'model', owned_by: 'openai' },
-      { id: 'gemini-2.5-pro', object: 'model', owned_by: 'google' },
-      { id: 'gemini-2.5-flash', object: 'model', owned_by: 'google' },
+      // OpenAI — strong / fast
+      { id: 'gpt-5.4', object: 'model', owned_by: 'openai' },
+      { id: 'gpt-5.4-mini', object: 'model', owned_by: 'openai' },
+      // Google — strong / fast
+      { id: 'gemini-3.1-pro-preview', object: 'model', owned_by: 'google' },
+      { id: 'gemini-3-flash-preview', object: 'model', owned_by: 'google' },
+      // Cursor — strong / fast
+      { id: 'composer-2', object: 'model', owned_by: 'cursor' },
+      { id: 'composer-2-fast', object: 'model', owned_by: 'cursor' },
     ],
   };
 }
