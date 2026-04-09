@@ -61,6 +61,18 @@ The env var is read on every request, so ops can flip it via `launchctl setenv` 
 | **Default** | OpenClaw main agent, cron jobs, subagents, scripted clients | `X-Session-Reset: 1` only |
 | **`HEURISTIC=1`** | ChatGPT-Next-Web, Open WebUI, LobeChat, data labeling tools | `X-Session-Reset: 1` **and** `[system, user]` shape |
 
+## Status webhook
+
+When `OPENAI_COMPAT_STATUS_URL` is set (full HTTP URL), each chat completion sends best-effort `POST` requests with `Content-Type: application/json` and body:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `state` | string | `thinking` (turn started), `working` (a tool is running), or `idle` (turn finished or stream closed). |
+| `activity` | string | Short human-readable line, e.g. `Processing request...`, `Reading: foo.ts`, `Running: npm test...`. |
+| `tool` | string \| null | Tool name when `state === working`, otherwise `null`. |
+
+Failures are ignored (no retries). Use this from a small local HTTP handler that forwards into your webchat status bar (e.g. sasha-doctor).
+
 ## Environment variables
 
 | Variable | Default | Purpose |
@@ -69,6 +81,7 @@ The env var is read on every request, so ops can flip it via `launchctl setenv` 
 | `OPENCLAW_RATE_LIMIT` | `300` | Max requests per IP per 60-second sliding window. |
 | `OPENCLAW_CORS_ORIGINS` | (loopback only) | Set to `*` to allow all origins (the `/v1/*` paths already do this). |
 | `OPENAI_COMPAT_NEW_CONVO_HEURISTIC` | (unset) | Set to `1` to enable webchat mode (see above). |
+| `OPENAI_COMPAT_STATUS_URL` | (unset) | If set, the bridge POSTs JSON status updates to this URL (fire-and-forget, 2s timeout). See [Status webhook](#status-webhook). |
 | `OPENCLAW_SERVE_MAX_SESSIONS` | `32` | Max concurrent OpenAI-compat sessions in serve mode. Bumped from the in-plugin default of 5 because each distinct caller now gets its own `sys-<hash>` session. |
 | `OPENCLAW_SERVE_TTL_MINUTES` | `60` | Idle TTL for OpenAI-compat sessions in serve mode. Idle sessions are reaped by a 60s background loop; persisted disk registry is kept for 7 days so a returning caller is auto-resumed. |
 

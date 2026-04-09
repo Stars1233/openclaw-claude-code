@@ -396,6 +396,73 @@ export async function handleChatCompletion(
   }
 }
 
+// ─── Status Reporting ───────────────────────────────────────────────────────
+// Push tool/thinking status to sasha-doctor so the webchat status bar shows
+// what the CLI agent is doing. Best-effort fire-and-forget.
+
+/**
+ * Optional status webhook — set `OPENAI_COMPAT_STATUS_URL` to an HTTP endpoint
+ * that accepts `POST { state, activity, tool }`. The bridge will fire-and-forget
+ * status updates when the CLI agent uses tools, so an external dashboard (e.g.
+ * a webchat status bar) can show real-time progress.
+ *
+ * Example: `OPENAI_COMPAT_STATUS_URL=http://127.0.0.1:18795/my-app/agent-status`
+ */
+function reportStatus(state: string, activity: string, tool?: string): void {
+  const url = process.env.OPENAI_COMPAT_STATUS_URL;
+  if (!url) return;
+  const payload = JSON.stringify({ state, activity, tool: tool || null });
+  const req = http.request(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      timeout: 2000,
+    },
+    () => {},
+  );
+  req.on('error', () => {});
+  req.write(payload);
+  req.end();
+}
+
+function getToolDescription(toolName: string, toolInput?: Record<string, unknown>): string {
+  switch (toolName) {
+    case 'Bash':
+    case 'exec': {
+      const cmd = String(toolInput?.command || '');
+      return `Running: ${cmd.length > 50 ? cmd.slice(0, 50) + '...' : cmd}`;
+    }
+    case 'Read':
+    case 'read':
+      return `Reading: ${String(toolInput?.file_path || toolInput?.path || 'file')
+        .split('/')
+        .pop()}`;
+    case 'Write':
+    case 'write':
+      return `Writing: ${String(toolInput?.file_path || toolInput?.path || 'file')
+        .split('/')
+        .pop()}`;
+    case 'Edit':
+    case 'edit':
+      return `Editing: ${String(toolInput?.file_path || toolInput?.path || 'file')
+        .split('/')
+        .pop()}`;
+    case 'Glob':
+    case 'glob':
+      return `Searching files: ${String(toolInput?.pattern || '')}`;
+    case 'Grep':
+    case 'grep':
+      return `Searching content: ${String(toolInput?.pattern || '')}`;
+    case 'WebSearch':
+      return `Web search: ${String(toolInput?.query || '')}`;
+    case 'Agent':
+      return `Spawning sub-agent...`;
+    default:
+      return `Using tool: ${toolName}`;
+  }
+}
+
 // ─── Non-Streaming ───────────────────────────────────────────────────────────
 
 async function handleNonStreaming(
@@ -407,7 +474,16 @@ async function handleNonStreaming(
   res: http.ServerResponse,
 ): Promise<void> {
   try {
-    const result = await manager.sendMessage(sessionName, userMessage);
+    reportStatus('thinking', 'Processing request...');
+    const result = await manager.sendMessage(sessionName, userMessage, {
+      onEvent: (event: { type: string; tool?: { name?: string; input?: Record<string, unknown> } }) => {
+        if (event.type === 'tool_use' && event.tool?.name) {
+          const desc = getToolDescription(event.tool.name, event.tool.input);
+          reportStatus('working', desc, event.tool.name);
+        }
+      },
+    });
+    reportStatus('idle', 'Ready');
     let tokensIn = 0;
     let tokensOut = 0;
     try {
@@ -421,6 +497,7 @@ async function handleNonStreaming(
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(response));
   } catch (err) {
+    reportStatus('idle', 'Request failed');
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message: (err as Error).message, type: 'server_error' } }));
   }
@@ -476,11 +553,18 @@ async function handleStreaming(
   }, 30_000);
 
   try {
+    reportStatus('thinking', 'Processing request...');
     await manager.sendMessage(sessionName, userMessage, {
       onChunk: (chunk: string) => {
         writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { content: chunk }, null)));
       },
+      onEvent: (event: { type: string; tool?: { name?: string; input?: Record<string, unknown> } }) => {
+        if (event.type === 'tool_use' && event.tool?.name) {
+          reportStatus('working', getToolDescription(event.tool.name, event.tool.input), event.tool.name);
+        }
+      },
     });
+    reportStatus('idle', 'Ready');
 
     // Get token usage for final chunk
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
@@ -501,6 +585,7 @@ async function handleStreaming(
     writeSSE(JSON.stringify(finalChunk));
     writeSSE('[DONE]');
   } catch (err) {
+    reportStatus('idle', 'Request failed');
     // Send error as SSE event then close
     writeSSE(JSON.stringify({ error: { message: (err as Error).message, type: 'server_error' } }));
     writeSSE('[DONE]');
