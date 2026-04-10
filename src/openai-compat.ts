@@ -475,9 +475,26 @@ export async function handleChatCompletion(
     if (request.tools?.length && engine === 'claude') {
       sessionConfig.tools = '';
     }
-    // Claude Code CLI supports --append-system-prompt natively.
-    if (extracted.systemPrompt && engine === 'claude') {
-      sessionConfig.appendSystemPrompt = extracted.systemPrompt;
+    // Claude Code CLI supports --system-prompt (replace) and --append-system-prompt (append).
+    // When the caller provides tools, use --system-prompt to REPLACE the CLI's entire
+    // system prompt. This removes the CLI's built-in tool definitions (Bash, Read, Edit, etc.)
+    // so the model only sees the caller's tools via <available_tools> in the user message.
+    // --append-system-prompt doesn't work because the CLI's own tool instructions take priority.
+    if (engine === 'claude') {
+      if (request.tools?.length) {
+        const noToolsPrompt =
+          'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
+          'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
+          'Do NOT attempt to call any tools or execute any commands.\n' +
+          'When you need to perform an action, use ONLY the tools defined in <available_tools> tags in the user message, ' +
+          'and respond with <tool_calls> tags as instructed there.\n' +
+          'If no <available_tools> are provided, respond with text only.';
+        sessionConfig.systemPrompt = extracted.systemPrompt
+          ? `${noToolsPrompt}\n\n${extracted.systemPrompt}`
+          : noToolsPrompt;
+      } else if (extracted.systemPrompt) {
+        sessionConfig.appendSystemPrompt = extracted.systemPrompt;
+      }
     }
     try {
       await manager.startSession(sessionConfig);
