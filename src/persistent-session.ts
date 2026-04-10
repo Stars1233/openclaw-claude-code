@@ -153,7 +153,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     // Tool control
     if (this.options.allowedTools?.length) args.push('--allowed-tools', this.options.allowedTools.join(','));
     if (this.options.disallowedTools?.length) args.push('--disallowed-tools', this.options.disallowedTools.join(','));
-    if (this.options.tools) {
+    if (this.options.tools !== undefined && this.options.tools !== null) {
       const t = Array.isArray(this.options.tools) ? this.options.tools.join(',') : this.options.tools;
       args.push('--tools', t);
     }
