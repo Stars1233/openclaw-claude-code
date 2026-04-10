@@ -38,6 +38,12 @@ export interface OpenAIChatCompletionRequest {
   tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }>;
 }
 
+export interface OpenAIToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
 export interface OpenAIChatCompletionResponse {
   id: string;
   object: 'chat.completion';
@@ -45,8 +51,8 @@ export interface OpenAIChatCompletionResponse {
   model: string;
   choices: Array<{
     index: number;
-    message: { role: 'assistant'; content: string };
-    finish_reason: 'stop' | 'length';
+    message: { role: 'assistant'; content: string | null; tool_calls?: OpenAIToolCall[] };
+    finish_reason: 'stop' | 'length' | 'tool_calls';
   }>;
   usage: {
     prompt_tokens: number;
@@ -62,7 +68,16 @@ export interface OpenAIChatCompletionChunk {
   model: string;
   choices: Array<{
     index: number;
-    delta: { role?: string; content?: string };
+    delta: {
+      role?: string;
+      content?: string | null;
+      tool_calls?: Array<{
+        index: number;
+        id?: string;
+        type?: 'function';
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
     finish_reason: string | null;
   }>;
   usage?: {
@@ -114,6 +129,98 @@ export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: ht
 /** Build the full session name from a key */
 export function sessionNameFromKey(key: string): string {
   return `${OPENAI_COMPAT_SESSION_PREFIX}${key}`;
+}
+
+// ─── Function Calling Support ────────────────────────────────────────────────
+
+/**
+ * Convert OpenAI tool definitions into a structured prompt block.
+ * Injected into the user message so the CLI model sees tool definitions
+ * and responds with <tool_calls> tags when it wants to invoke a function.
+ */
+export function buildToolPromptBlock(tools: OpenAIChatCompletionRequest['tools']): string {
+  if (!tools?.length) return '';
+
+  const toolDefs = tools
+    .map((t) => {
+      const fn = t.function;
+      const params = JSON.stringify(fn.parameters, null, 2);
+      return `### ${fn.name}\n${fn.description}\n\nParameters:\n\`\`\`json\n${params}\n\`\`\``;
+    })
+    .join('\n\n');
+
+  return (
+    '<available_tools>\n' +
+    'You have access to the following tools. When you need to use a tool, respond with a JSON array wrapped in <tool_calls> tags. You may call multiple tools at once.\n\n' +
+    'FORMAT:\n' +
+    '<tool_calls>\n' +
+    '[{"name": "tool_name", "arguments": {"param1": "value1"}}]\n' +
+    '</tool_calls>\n\n' +
+    'After outputting tool_calls, STOP. Do not continue with additional text after the closing </tool_calls> tag. Wait for the tool results before continuing.\n\n' +
+    'If you do NOT need any tools, respond normally with text only (no <tool_calls> tags).\n\n' +
+    '## Available Tools\n\n' +
+    toolDefs +
+    '\n</available_tools>'
+  );
+}
+
+export interface ParsedToolCalls {
+  textContent: string | null;
+  toolCalls: OpenAIToolCall[];
+}
+
+/**
+ * Parse tool_calls from CLI text output.
+ *
+ * Looks for <tool_calls>[...]</tool_calls> tags in the response text.
+ * Returns both the extracted text content (before/after tags) and any tool calls found.
+ */
+export function parseToolCallsFromText(text: string): ParsedToolCalls {
+  const tagRegex = /<tool_calls>\s*([\s\S]*?)\s*<\/tool_calls>/;
+  const match = text.match(tagRegex);
+
+  if (match) {
+    const jsonStr = match[1].trim();
+    const textBefore = text.slice(0, match.index!).trim();
+    const textAfter = text.slice(match.index! + match[0].length).trim();
+    const combinedText = [textBefore, textAfter].filter(Boolean).join('\n') || null;
+
+    try {
+      const parsed = JSON.parse(jsonStr) as unknown;
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      const calls: OpenAIToolCall[] = arr.map((call: { name: string; arguments?: unknown }) => ({
+        id: `call_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+        type: 'function' as const,
+        function: {
+          name: call.name,
+          arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {}),
+        },
+      }));
+      return { textContent: combinedText, toolCalls: calls };
+    } catch {
+      return { textContent: text, toolCalls: [] };
+    }
+  }
+
+  return { textContent: text || null, toolCalls: [] };
+}
+
+/**
+ * Serialize tool result messages into a text block for the CLI model.
+ * Converts OpenAI `tool` role messages into <tool_result> tags.
+ */
+export function serializeToolResults(messages: OpenAIChatMessage[]): string {
+  const toolMessages = messages.filter((m) => m.role === 'tool');
+  if (!toolMessages.length) return '';
+
+  const results = toolMessages
+    .map((m) => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return `<tool_result tool_call_id="${m.tool_call_id || 'unknown'}">\n${content}\n</tool_result>`;
+    })
+    .join('\n\n');
+
+  return `<tool_results>\n${results}\n</tool_results>\n\nAbove are the results of the tool calls you requested. Continue your response based on these results.`;
 }
 
 // ─── Message Extraction ──────────────────────────────────────────────────────
@@ -173,6 +280,17 @@ export function extractUserMessage(
   const systemMessages = messages.filter((m) => m.role === 'system');
   const systemPrompt = systemMessages.length > 0 ? systemMessages.map(textOf).join('\n') : undefined;
 
+  // Handle tool result messages — synthesize user message from tool results
+  const hasToolResults = messages.some((m) => m.role === 'tool');
+  if (hasToolResults) {
+    const toolResultBlock = serializeToolResults(messages);
+    // Find last user message after tool results (if any)
+    const userMessages = messages.filter((m) => m.role === 'user');
+    const lastUserText = userMessages.length > 0 ? textOf(userMessages[userMessages.length - 1]) : '';
+    const userMessage = lastUserText ? `${toolResultBlock}\n\n${lastUserText}` : toolResultBlock;
+    return { systemPrompt, userMessage, isNewConversation: false };
+  }
+
   // Find last user message
   const userMessages = messages.filter((m) => m.role === 'user');
   if (userMessages.length === 0) {
@@ -205,7 +323,9 @@ export function formatCompletionResponse(
   text: string,
   tokensIn: number,
   tokensOut: number,
+  toolCalls?: OpenAIToolCall[],
 ): OpenAIChatCompletionResponse {
+  const hasToolCalls = toolCalls && toolCalls.length > 0;
   return {
     id,
     object: 'chat.completion',
@@ -214,8 +334,12 @@ export function formatCompletionResponse(
     choices: [
       {
         index: 0,
-        message: { role: 'assistant', content: text },
-        finish_reason: 'stop',
+        message: {
+          role: 'assistant',
+          content: text || null,
+          ...(hasToolCalls ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: hasToolCalls ? 'tool_calls' : 'stop',
       },
     ],
     usage: {
@@ -282,6 +406,7 @@ export async function handleChatCompletion(
     temperature: body.temperature as number | undefined,
     max_tokens: body.max_tokens as number | undefined,
     user: body.user as string | undefined,
+    tools: body.tools as OpenAIChatCompletionRequest['tools'] | undefined,
   };
 
   // Validate max_tokens if provided
@@ -343,6 +468,13 @@ export async function handleChatCompletion(
       // because some CLI forks don't support this flag.
       skipPersistence: true,
     };
+    // When the caller provides tool definitions, disable CLI built-in tools
+    // (Bash, Read, Edit, etc.) so the model uses our text-defined tools
+    // instead. Only works on Claude Code; forks that don't support --tools ""
+    // will fall back to prompt-only instructions.
+    if (request.tools?.length && engine === 'claude') {
+      sessionConfig.tools = '';
+    }
     // Claude Code CLI supports --append-system-prompt natively.
     if (extracted.systemPrompt && engine === 'claude') {
       sessionConfig.appendSystemPrompt = extracted.systemPrompt;
@@ -383,12 +515,19 @@ export async function handleChatCompletion(
     userMessage = `<system>\n${extracted.systemPrompt}\n</system>\n\n${userMessage}`;
   }
 
+  // Inject tool definitions into the user message
+  const hasTools = !!request.tools?.length;
+  if (hasTools) {
+    const toolBlock = buildToolPromptBlock(request.tools);
+    userMessage = `${toolBlock}\n\n${userMessage}`;
+  }
+
   const completionId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 29)}`;
 
   if (isStreaming) {
-    await handleStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res);
+    await handleStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res, hasTools);
   } else {
-    await handleNonStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res);
+    await handleNonStreaming(manager, sessionName, resolvedModel, userMessage, completionId, res, hasTools);
   }
 }
 
@@ -468,6 +607,7 @@ async function handleNonStreaming(
   userMessage: string,
   completionId: string,
   res: http.ServerResponse,
+  hasTools: boolean,
 ): Promise<void> {
   try {
     reportStatus('thinking', 'Processing request...');
@@ -489,9 +629,25 @@ async function handleNonStreaming(
     } catch {
       /* stats unavailable */
     }
-    const response = formatCompletionResponse(completionId, model, result.output, tokensIn, tokensOut);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(response));
+
+    // Parse tool_calls from response text when caller provided tools
+    if (hasTools) {
+      const parsed = parseToolCallsFromText(result.output);
+      const response = formatCompletionResponse(
+        completionId,
+        model,
+        parsed.textContent ?? '',
+        tokensIn,
+        tokensOut,
+        parsed.toolCalls.length > 0 ? parsed.toolCalls : undefined,
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(response));
+    } else {
+      const response = formatCompletionResponse(completionId, model, result.output, tokensIn, tokensOut);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(response));
+    }
   } catch (err) {
     reportStatus('idle', 'Request failed');
     res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -508,6 +664,7 @@ async function handleStreaming(
   userMessage: string,
   completionId: string,
   res: http.ServerResponse,
+  hasTools: boolean,
 ): Promise<void> {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -534,10 +691,7 @@ async function handleStreaming(
   // Initial chunk with role
   writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { role: 'assistant' }, null)));
 
-  // SSE keepalive heartbeat to prevent proxy/client timeouts.
-  // IMPORTANT: must write a proper SSE comment (line starting with ':'),
-  // NOT a 'data:' field. The OpenAI SDK JSON.parse()s every data field —
-  // sending 'data: :keepalive' causes a SyntaxError that aborts the stream.
+  // SSE keepalive heartbeat
   const heartbeatTimer = setInterval(() => {
     if (!clientDisconnected) {
       try {
@@ -548,11 +702,20 @@ async function handleStreaming(
     }
   }, 30_000);
 
+  // When tools are present, buffer the full response to parse for tool_calls.
+  // Without tools, stream text chunks directly for low latency.
+  let bufferedText = '';
+
   try {
     reportStatus('thinking', 'Processing request...');
     await manager.sendMessage(sessionName, userMessage, {
       onChunk: (chunk: string) => {
-        writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { content: chunk }, null)));
+        if (hasTools) {
+          bufferedText += chunk;
+          // Send keepalive comments during buffering to prevent timeouts
+        } else {
+          writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { content: chunk }, null)));
+        }
       },
       onEvent: (event: { type: string; tool?: { name?: string; input?: Record<string, unknown> } }) => {
         if (event.type === 'tool_use' && event.tool?.name) {
@@ -575,14 +738,62 @@ async function handleStreaming(
       /* best effort */
     }
 
-    // Final chunk with finish_reason + usage
-    const finalChunk = formatCompletionChunk(completionId, model, {}, 'stop');
-    if (usage) finalChunk.usage = usage;
-    writeSSE(JSON.stringify(finalChunk));
+    if (hasTools && bufferedText) {
+      const parsed = parseToolCallsFromText(bufferedText);
+
+      if (parsed.toolCalls.length > 0) {
+        // Emit text content if any
+        if (parsed.textContent) {
+          writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { content: parsed.textContent }, null)));
+        }
+        // Emit tool_call chunks
+        for (let i = 0; i < parsed.toolCalls.length; i++) {
+          const tc = parsed.toolCalls[i];
+          writeSSE(
+            JSON.stringify({
+              id: completionId,
+              object: 'chat.completion.chunk' as const,
+              created: Math.floor(Date.now() / 1000),
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: i,
+                        id: tc.id,
+                        type: 'function' as const,
+                        function: { name: tc.function.name, arguments: tc.function.arguments },
+                      },
+                    ],
+                  },
+                  finish_reason: null,
+                },
+              ],
+            }),
+          );
+        }
+        // Final chunk with tool_calls finish reason
+        const finalChunk = formatCompletionChunk(completionId, model, {}, 'tool_calls');
+        if (usage) finalChunk.usage = usage;
+        writeSSE(JSON.stringify(finalChunk));
+      } else {
+        // No tool calls — emit buffered text as content
+        writeSSE(JSON.stringify(formatCompletionChunk(completionId, model, { content: bufferedText }, null)));
+        const finalChunk = formatCompletionChunk(completionId, model, {}, 'stop');
+        if (usage) finalChunk.usage = usage;
+        writeSSE(JSON.stringify(finalChunk));
+      }
+    } else {
+      // No tools — standard finish
+      const finalChunk = formatCompletionChunk(completionId, model, {}, 'stop');
+      if (usage) finalChunk.usage = usage;
+      writeSSE(JSON.stringify(finalChunk));
+    }
     writeSSE('[DONE]');
   } catch (err) {
     reportStatus('idle', 'Request failed');
-    // Send error as SSE event then close
     writeSSE(JSON.stringify({ error: { message: (err as Error).message, type: 'server_error' } }));
     writeSSE('[DONE]');
   } finally {
