@@ -329,10 +329,6 @@ export async function handleChatCompletion(
     // OpenAI-compat sessions are API proxies, not coding sessions.
     // Use a neutral empty temp dir so the CLI doesn't load CLAUDE.md,
     // git state, or project context from wherever `serve` was started.
-    // The empty dir has no CLAUDE.md, no .git, no project files — so the
-    // only context the model sees is what the upstream caller injected.
-    // Note: --bare is NOT used because not all CLI forks support it
-    // (e.g. CodeBuddy exits with code 1 on unknown --bare flag).
     const sessionCwd = path.join(os.tmpdir(), `openclaw-compat-${sessionName}`);
     if (!fs.existsSync(sessionCwd)) fs.mkdirSync(sessionCwd, { recursive: true });
     const sessionConfig: Record<string, unknown> = {
@@ -341,38 +337,15 @@ export async function handleChatCompletion(
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
-      // OpenAI-compat sessions must NOT persist to disk or auto-resume from
-      // disk. Reasons:
-      // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
-      //    auto-resumed on every server restart, producing zero output forever.
-      // 2. The system prompt may change between server restarts (different
-      //    caller context), and auto-resume would ignore the new prompt.
-      // 3. API endpoints should be stateless across server restarts — the
-      //    in-memory session is sufficient while the server is running.
-      //
-      // noSessionPersistence: tells the CLI not to write session state to
-      //   disk (`--no-session-persistence`), so the next server restart
-      //   creates a genuinely fresh session instead of resuming stale state.
       // skipPersistence: tells SessionManager not to write this session to
-      //   the disk registry, so `_doStartSession` won't find a stale
-      //   claudeSessionId to `--resume` from.
-      noSessionPersistence: true,
+      // the disk registry, preventing auto-resume of stale sessions.
+      // Note: noSessionPersistence (--no-session-persistence) is NOT set
+      // because some CLI forks (e.g. CodeBuddy) don't support this flag.
       skipPersistence: true,
     };
     // Claude Code CLI supports --append-system-prompt natively.
-    // Prepend a "no tools" directive so the CLI acts as a pure LLM proxy.
-    // CLI-level tool disabling (--tools "", --allowedTools []) is unreliable
-    // across forks (CodeBuddy hangs on blocked tools in non-interactive mode),
-    // so we instruct the model directly. This is more robust than CLI flags
-    // because the model (Opus/Sonnet) reliably follows system prompt rules.
-    const noToolsDirective =
-      'IMPORTANT: You are running as a pure LLM behind an API proxy. ' +
-      'You do NOT have access to any tools (no Bash, no Read, no Edit, no Write, no file operations). ' +
-      'Do NOT attempt to call any tools or execute any commands. ' +
-      'Respond with text only. If asked to run commands or access files, explain that you can only provide text responses.';
-    if (engine === 'claude') {
-      const callerPrompt = extracted.systemPrompt || '';
-      sessionConfig.appendSystemPrompt = callerPrompt ? `${noToolsDirective}\n\n${callerPrompt}` : noToolsDirective;
+    if (extracted.systemPrompt && engine === 'claude') {
+      sessionConfig.appendSystemPrompt = extracted.systemPrompt;
     }
     try {
       await manager.startSession(sessionConfig);
