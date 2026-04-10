@@ -341,6 +341,11 @@ export async function handleChatCompletion(
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
+      // Disable all CLI tools — openai-compat is a pure LLM proxy.
+      // OpenClaw has its own tool system; letting the CLI also run tools
+      // causes double-tool conflicts (CLI executes commands autonomously
+      // on the host machine instead of returning tool_calls to OpenClaw).
+      tools: '',
       // OpenAI-compat sessions must NOT persist to disk or auto-resume from
       // disk. Reasons:
       // 1. A poisoned session (e.g. from a previous ENOENT/crash) would be
