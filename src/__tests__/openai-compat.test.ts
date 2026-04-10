@@ -9,6 +9,9 @@ import {
   extractUserMessage,
   formatCompletionResponse,
   formatCompletionChunk,
+  buildToolPromptBlock,
+  parseToolCallsFromText,
+  serializeToolResults,
 } from '../openai-compat.js';
 import { resolveEngineAndModel, getModelList } from '../models.js';
 import type { OpenAIChatMessage } from '../openai-compat.js';
@@ -369,5 +372,195 @@ describe('getModelList', () => {
     expect(owners).toContain('anthropic');
     expect(owners).toContain('openai');
     expect(owners).toContain('google');
+  });
+});
+
+// ─── buildToolPromptBlock ───────────────────────────────────────────────────
+
+describe('buildToolPromptBlock', () => {
+  it('returns empty string for undefined/empty tools', () => {
+    expect(buildToolPromptBlock(undefined)).toBe('');
+    expect(buildToolPromptBlock([])).toBe('');
+  });
+
+  it('includes tool name, description, and parameters', () => {
+    const tools = [
+      {
+        type: 'function' as const,
+        function: {
+          name: 'get_weather',
+          description: 'Get weather for a city',
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        },
+      },
+    ];
+    const result = buildToolPromptBlock(tools);
+    expect(result).toContain('<available_tools>');
+    expect(result).toContain('</available_tools>');
+    expect(result).toContain('get_weather');
+    expect(result).toContain('Get weather for a city');
+    expect(result).toContain('<tool_calls>');
+  });
+
+  it('includes multiple tools', () => {
+    const tools = [
+      { type: 'function' as const, function: { name: 'tool_a', description: 'A', parameters: {} } },
+      { type: 'function' as const, function: { name: 'tool_b', description: 'B', parameters: {} } },
+    ];
+    const result = buildToolPromptBlock(tools);
+    expect(result).toContain('### tool_a');
+    expect(result).toContain('### tool_b');
+  });
+});
+
+// ─── parseToolCallsFromText ─────────────────────────────────────────────────
+
+describe('parseToolCallsFromText', () => {
+  it('returns text-only when no tool_calls tags', () => {
+    const result = parseToolCallsFromText('Hello, world!');
+    expect(result.textContent).toBe('Hello, world!');
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it('parses single tool call', () => {
+    const text = '<tool_calls>\n[{"name": "get_weather", "arguments": {"city": "Tokyo"}}]\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].function.name).toBe('get_weather');
+    expect(JSON.parse(result.toolCalls[0].function.arguments)).toEqual({ city: 'Tokyo' });
+    expect(result.toolCalls[0].type).toBe('function');
+    expect(result.toolCalls[0].id).toMatch(/^call_/);
+  });
+
+  it('parses multiple tool calls', () => {
+    const text = '<tool_calls>\n[{"name": "a", "arguments": {}}, {"name": "b", "arguments": {"x": 1}}]\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0].function.name).toBe('a');
+    expect(result.toolCalls[1].function.name).toBe('b');
+  });
+
+  it('preserves text before tool_calls', () => {
+    const text = 'Let me search for that.\n<tool_calls>\n[{"name": "search", "arguments": {}}]\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.textContent).toBe('Let me search for that.');
+    expect(result.toolCalls).toHaveLength(1);
+  });
+
+  it('falls back to text on malformed JSON', () => {
+    const text = '<tool_calls>\nnot json\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.textContent).toBe(text);
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it('handles string arguments passthrough', () => {
+    const text = '<tool_calls>\n[{"name": "fn", "arguments": "{\\"key\\": \\"val\\"}"}]\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.toolCalls[0].function.arguments).toBe('{"key": "val"}');
+  });
+
+  it('returns null textContent when empty string', () => {
+    const result = parseToolCallsFromText('');
+    expect(result.textContent).toBeNull();
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it('assigns unique ids to each tool call', () => {
+    const text = '<tool_calls>\n[{"name": "a", "arguments": {}}, {"name": "b", "arguments": {}}]\n</tool_calls>';
+    const result = parseToolCallsFromText(text);
+    expect(result.toolCalls[0].id).not.toBe(result.toolCalls[1].id);
+  });
+});
+
+// ─── serializeToolResults ───────────────────────────────────────────────────
+
+describe('serializeToolResults', () => {
+  it('returns empty string when no tool messages', () => {
+    const messages: OpenAIChatMessage[] = [{ role: 'user', content: 'hi' }];
+    expect(serializeToolResults(messages)).toBe('');
+  });
+
+  it('serializes tool results with tool_call_id', () => {
+    const messages: OpenAIChatMessage[] = [{ role: 'tool', content: '{"temp": 22}', tool_call_id: 'call_abc' }];
+    const result = serializeToolResults(messages);
+    expect(result).toContain('<tool_results>');
+    expect(result).toContain('tool_call_id="call_abc"');
+    expect(result).toContain('{"temp": 22}');
+    expect(result).toContain('</tool_results>');
+  });
+
+  it('serializes multiple tool results', () => {
+    const messages: OpenAIChatMessage[] = [
+      { role: 'tool', content: 'result1', tool_call_id: 'call_1' },
+      { role: 'tool', content: 'result2', tool_call_id: 'call_2' },
+    ];
+    const result = serializeToolResults(messages);
+    expect(result).toContain('call_1');
+    expect(result).toContain('call_2');
+  });
+});
+
+// ─── extractUserMessage with tool role ──────────────────────────────────────
+
+describe('extractUserMessage with tool results', () => {
+  it('synthesizes user message from tool results', () => {
+    const messages: OpenAIChatMessage[] = [
+      { role: 'system', content: 'You are a helper.' },
+      { role: 'user', content: 'What is the weather?' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{}' } }],
+      },
+      { role: 'tool', content: '{"temp": 22}', tool_call_id: 'call_1' },
+    ];
+    const result = extractUserMessage(messages);
+    expect(result.userMessage).toContain('<tool_results>');
+    expect(result.userMessage).toContain('{"temp": 22}');
+    expect(result.isNewConversation).toBe(false);
+  });
+
+  it('combines tool results with subsequent user message', () => {
+    const messages: OpenAIChatMessage[] = [
+      { role: 'user', content: 'Search for news' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'search', arguments: '{}' } }],
+      },
+      { role: 'tool', content: 'News results here', tool_call_id: 'call_1' },
+      { role: 'user', content: 'Summarize the results' },
+    ];
+    const result = extractUserMessage(messages);
+    expect(result.userMessage).toContain('<tool_results>');
+    expect(result.userMessage).toContain('Summarize the results');
+  });
+});
+
+// ─── formatCompletionResponse with tool_calls ───────────────────────────────
+
+describe('formatCompletionResponse with tool_calls', () => {
+  it('returns tool_calls finish_reason when toolCalls provided', () => {
+    const toolCalls = [{ id: 'call_1', type: 'function' as const, function: { name: 'fn', arguments: '{}' } }];
+    const resp = formatCompletionResponse('id', 'model', '', 100, 50, toolCalls);
+    expect(resp.choices[0].finish_reason).toBe('tool_calls');
+    expect(resp.choices[0].message.tool_calls).toEqual(toolCalls);
+    expect(resp.choices[0].message.content).toBeNull();
+  });
+
+  it('returns stop finish_reason without toolCalls', () => {
+    const resp = formatCompletionResponse('id', 'model', 'Hello', 100, 50);
+    expect(resp.choices[0].finish_reason).toBe('stop');
+    expect(resp.choices[0].message.content).toBe('Hello');
+    expect(resp.choices[0].message.tool_calls).toBeUndefined();
+  });
+
+  it('includes both text and tool_calls when both present', () => {
+    const toolCalls = [{ id: 'call_1', type: 'function' as const, function: { name: 'fn', arguments: '{}' } }];
+    const resp = formatCompletionResponse('id', 'model', 'Thinking...', 100, 50, toolCalls);
+    expect(resp.choices[0].finish_reason).toBe('tool_calls');
+    expect(resp.choices[0].message.content).toBe('Thinking...');
+    expect(resp.choices[0].message.tool_calls).toEqual(toolCalls);
   });
 });

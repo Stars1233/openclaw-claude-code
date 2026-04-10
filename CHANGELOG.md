@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] - 2026-04-10
+
+### Added
+- **OpenAI function calling support for openai-compat endpoint** — the `/v1/chat/completions` bridge now supports the full OpenAI tool use protocol:
+  - Accepts `tools` array from requests (previously silently dropped)
+  - Injects tool definitions into the prompt via `<available_tools>` block
+  - Parses `<tool_calls>` tags from model responses into proper `message.tool_calls` format
+  - Returns `finish_reason: 'tool_calls'` when tool calls are detected
+  - Supports `tool` role messages for multi-turn tool result injection
+  - Streaming mode buffers response when tools present, emits `delta.tool_calls` chunks
+  - For Claude engine: disables CLI built-in tools (`--tools ""`) to prevent the agent from executing tools on the host instead of returning `tool_calls`
+- New exported functions: `buildToolPromptBlock()`, `parseToolCallsFromText()`, `serializeToolResults()`
+- 19 new unit tests for function calling (tool prompt building, response parsing, tool result serialization, multi-turn flow)
+
+### Fixed
+- **openai-compat session cwd** — uses empty temp directory instead of `process.cwd()` to prevent the CLI from loading CLAUDE.md and workspace context from the serve directory
+- **`tools: ''` falsy check** — empty string is now correctly passed through as `--tools ""` (previously skipped due to truthiness check)
+
 ## [2.10.0] - 2026-04-10
 
 ### Added
