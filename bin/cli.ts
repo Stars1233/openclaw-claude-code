@@ -52,6 +52,7 @@ program
   .command('serve')
   .description('Start standalone embedded server (for use without OpenClaw)')
   .option('-p, --port <port>', 'Port', '18796')
+  .option('-H, --host <host>', 'Bind address (default: 127.0.0.1, use 0.0.0.0 for remote access)')
   .action(async (opts) => {
     const { SessionManager } = await import('../src/session-manager.js');
     const { EmbeddedServer } = await import('../src/embedded-server.js');
@@ -68,7 +69,7 @@ program
       maxConcurrentSessions: maxSessions,
       sessionTtlMinutes: ttlMinutes,
     });
-    const server = new EmbeddedServer(manager, parseInt(opts.port));
+    const server = new EmbeddedServer(manager, parseInt(opts.port), opts.host);
     const port = await server.start();
     if (port) {
       console.log(`Standalone server running on http://127.0.0.1:${port}`);

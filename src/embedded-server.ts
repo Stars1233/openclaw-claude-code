@@ -33,10 +33,12 @@ export class EmbeddedServer {
   private _rateWindows = new Map<string, number[]>();
   private _rateLimitCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private _rateLimit: number;
+  private host: string;
 
-  constructor(manager: SessionManager, port?: number) {
+  constructor(manager: SessionManager, port?: number, host?: string) {
     this.manager = manager;
     this.port = port || DEFAULT_SERVER_PORT;
+    this.host = host || process.env.OPENCLAW_SERVER_HOST || '127.0.0.1';
     this._rateLimit = parseInt(process.env.OPENCLAW_RATE_LIMIT || '', 10) || RATE_LIMIT_MAX_REQUESTS;
   }
 
@@ -92,9 +94,9 @@ export class EmbeddedServer {
         }
       });
 
-      this.server.listen(this.port, '127.0.0.1', () => {
+      this.server.listen(this.port, this.host, () => {
         console.log(
-          `[embedded-server] Listening on http://127.0.0.1:${this.port}${this.authToken ? ' (auth enabled)' : ''}`,
+          `[embedded-server] Listening on http://${this.host}:${this.port}${this.authToken ? ' (auth enabled)' : ''}`,
         );
         resolve(this.port);
       });
