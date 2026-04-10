@@ -7,6 +7,7 @@
  */
 
 import * as http from 'node:http';
+import * as os from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { resolveEngineAndModel } from './models.js';
 import {
@@ -323,9 +324,14 @@ export async function handleChatCompletion(
   // Create session if needed
   const needsCreate = !sessionExists || extracted.isNewConversation;
   if (needsCreate) {
+    // Non-claude engines (Cursor, Codex, Gemini) scan --workspace for context
+    // (CLAUDE.md, git status, plan files) and "resume" from whatever project
+    // the server sits in, producing responses about the wrong topic. Use
+    // homedir as a neutral cwd to avoid stale workspace context leaking in.
+    const sessionCwd = engine === 'claude' ? process.cwd() : os.homedir();
     const sessionConfig: Record<string, unknown> = {
       name: sessionName,
-      cwd: process.cwd(),
+      cwd: sessionCwd,
       engine,
       model: resolvedModel,
       permissionMode: 'bypassPermissions',
