@@ -54,6 +54,7 @@ import {
   GIT_LOG_DEPTH,
   DEFAULT_MAX_ROUNDS,
 } from './constants.js';
+import { type Logger, createConsoleLogger } from './logger.js';
 
 // Forward-declare SessionManager to avoid circular imports at the type level.
 // The actual instance is injected via constructor.
@@ -106,18 +107,28 @@ function spawnAsync(
 const VALID_AGENT_NAME = /^[a-zA-Z0-9_-]+$/;
 
 /** Best-effort cleanup of already-created worktrees when a batch creation fails */
-async function cleanupCreatedWorktrees(worktreeMap: Map<string, string>, projectDir: string): Promise<void> {
+async function cleanupCreatedWorktrees(
+  worktreeMap: Map<string, string>,
+  projectDir: string,
+  logger?: Logger,
+): Promise<void> {
+  const log = logger || createConsoleLogger('Council');
   for (const [createdAgent, createdPath] of worktreeMap) {
     await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', createdPath], {
       timeout: GIT_CMD_TIMEOUT_MS,
     }).catch((err) => {
-      console.error(`[Council] Failed to cleanup worktree for ${createdAgent}:`, (err as Error).message);
+      log.error(`Failed to cleanup worktree for ${createdAgent}:`, (err as Error).message);
     });
   }
 }
 
 /** Set up git worktrees — one isolated directory per agent */
-async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promise<Map<string, string>> {
+async function setupWorktrees(
+  projectDir: string,
+  agents: AgentPersona[],
+  logger?: Logger,
+): Promise<Map<string, string>> {
+  const log = logger || createConsoleLogger('Council');
   const worktreeMap = new Map<string, string>();
 
   // Validate agent names before using them in git branch names
@@ -143,12 +154,12 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
   await spawnAsync('git', ['-C', projectDir, 'config', '--local', 'user.email', 'council@openclaw'], {
     timeout: GIT_CMD_TIMEOUT_MS,
   }).catch((err) => {
-    console.error('[Council] Failed to set git user.email:', err.message);
+    log.error('Failed to set git user.email:', err.message);
   });
   await spawnAsync('git', ['-C', projectDir, 'config', '--local', 'user.name', 'Council'], {
     timeout: GIT_CMD_TIMEOUT_MS,
   }).catch((err) => {
-    console.error('[Council] Failed to set git user.name:', err.message);
+    log.error('Failed to set git user.name:', err.message);
   });
 
   // Ensure at least one commit
@@ -157,7 +168,7 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
     .catch(() => false);
   if (!hasCommit) {
     await spawnAsync('git', ['-C', projectDir, 'add', '-A'], { timeout: GIT_CMD_TIMEOUT_MS }).catch((err) => {
-      console.error('[Council] Failed to git add:', err.message);
+      log.error('Failed to git add:', err.message);
     });
     await spawnAsync('git', ['-C', projectDir, 'commit', '--allow-empty', '-m', 'council: initial'], {
       timeout: GIT_CMD_TIMEOUT_MS,
@@ -179,7 +190,7 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
           .then((r) => r.stdout.trim().length > 0)
           .catch(() => false);
         if (dirty) {
-          console.log(`[Council] WARNING: worktree ${wtDir} has uncommitted changes — discarding via hard reset`);
+          log.warn(`Worktree ${wtDir} has uncommitted changes — discarding via hard reset`);
         }
         try {
           await spawnAsync('git', ['-C', wtDir, 'checkout', branch], { timeout: GIT_CMD_TIMEOUT_MS });
@@ -187,20 +198,20 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
           worktreeMap.set(agent.name, wtDir);
           continue;
         } catch (err) {
-          console.error(`[Council] Failed to reuse worktree ${wtDir} for branch ${branch}:`, (err as Error).message);
+          log.error(`Failed to reuse worktree ${wtDir} for branch ${branch}:`, (err as Error).message);
           // Fall through to re-create the worktree below
         }
       }
       await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', wtDir], {
         timeout: GIT_CMD_TIMEOUT_MS,
       }).catch((err) => {
-        console.error(`[Council] Failed to remove worktree ${wtDir}:`, err.message);
+        log.error(`Failed to remove worktree ${wtDir}:`, err.message);
       });
     }
 
     await spawnAsync('git', ['-C', projectDir, 'branch', '-D', branch], { timeout: GIT_CMD_TIMEOUT_MS }).catch(
       (err) => {
-        console.error(`[Council] Failed to delete branch ${branch}:`, err.message);
+        log.error(`Failed to delete branch ${branch}:`, err.message);
       },
     );
     try {
@@ -208,12 +219,12 @@ async function setupWorktrees(projectDir: string, agents: AgentPersona[]): Promi
         timeout: WORKTREE_CMD_TIMEOUT_MS,
       });
     } catch (err) {
-      await cleanupCreatedWorktrees(worktreeMap, projectDir);
+      await cleanupCreatedWorktrees(worktreeMap, projectDir, log);
       throw new Error(`Failed to create worktree for ${agent.name} at ${wtDir}: ${(err as Error).message}`);
     }
 
     if (!fs.existsSync(wtDir)) {
-      await cleanupCreatedWorktrees(worktreeMap, projectDir);
+      await cleanupCreatedWorktrees(worktreeMap, projectDir, log);
       throw new Error(`Worktree directory not created: ${wtDir}`);
     }
     worktreeMap.set(agent.name, wtDir);
@@ -392,12 +403,14 @@ export class Council extends EventEmitter {
   private _activeSessions = new Set<string>();
   private _session: CouncilSession | null = null;
   private _pendingInjection: string | null = null;
+  private logger: Logger;
 
-  constructor(config: CouncilConfig, manager: SessionManagerLike) {
+  constructor(config: CouncilConfig, manager: SessionManagerLike, logger?: Logger) {
     super();
     this.config = config;
     this.manager = manager;
     this.agentTimeoutMs = config.agentTimeoutMs || DEFAULT_AGENT_TIMEOUT_MS;
+    this.logger = logger || createConsoleLogger('Council');
   }
 
   getSession(): CouncilSession | undefined {
@@ -481,7 +494,7 @@ export class Council extends EventEmitter {
         if (stripped.length > 0 || hasConsensusMarker(content)) break;
 
         if (attempt === EMPTY_RESPONSE_MAX_RETRIES) {
-          console.log(`[Council] ${agent.name}: empty after ${EMPTY_RESPONSE_MAX_RETRIES} retries`);
+          this.logger.info(`${agent.name}: empty after ${EMPTY_RESPONSE_MAX_RETRIES} retries`);
         }
       }
 
@@ -566,32 +579,32 @@ export class Council extends EventEmitter {
     if (this.config.agents.length === 0) {
       throw new Error('Council requires at least one agent');
     }
-    console.log(`[Council] Starting: ${this.config.agents.length} agents, max ${this.config.maxRounds} rounds`);
-    console.log(`[Council] Task: ${trimmedTask}`);
-    console.log(`[Council] Dir: ${this.config.projectDir}`);
-    console.log(`[Council] WARNING: agents run with permissionMode=bypassPermissions for autonomous execution`);
+    this.logger.info(`Starting: ${this.config.agents.length} agents, max ${this.config.maxRounds} rounds`);
+    this.logger.info(`Task: ${trimmedTask}`);
+    this.logger.info(`Dir: ${this.config.projectDir}`);
+    this.logger.warn('Agents run with permissionMode=bypassPermissions for autonomous execution');
     this.emitEvent({ type: 'session-start', sessionId: session.id, task: trimmedTask });
 
     // Set up git worktrees
     let worktreeMap: Map<string, string>;
     try {
-      worktreeMap = await setupWorktrees(this.config.projectDir, this.config.agents);
+      worktreeMap = await setupWorktrees(this.config.projectDir, this.config.agents, this.logger);
     } catch (err) {
       session.status = 'error';
       session.endTime = new Date().toISOString();
       throw err;
     }
 
-    console.log('[Council] Worktrees:');
+    this.logger.info('Worktrees:');
     for (const [name, wtPath] of worktreeMap) {
-      console.log(`  ${name}: ${wtPath}`);
+      this.logger.info(`  ${name}: ${wtPath}`);
     }
 
     try {
       for (let round = 1; round <= this.config.maxRounds; round++) {
         if (this._aborted) break;
 
-        console.log(`\n[Council] Round ${round} (${this.config.agents.length} agents parallel)`);
+        this.logger.info(`Round ${round} (${this.config.agents.length} agents parallel)`);
         this.emitEvent({ type: 'round-start', sessionId: session.id, round });
 
         // Check for user injection
@@ -626,7 +639,7 @@ export class Council extends EventEmitter {
             session.responses.push(result.value);
           } else {
             const errMsg = (result.reason as Error)?.message || 'Unknown error';
-            console.log(`[Council] ${agent.name} failed: ${errMsg}`);
+            this.logger.error(`${agent.name} failed: ${errMsg}`);
             this.emitEvent({ type: 'error', sessionId: session.id, round, agent: agent.name, error: errMsg });
             roundVotes.push(false);
             session.responses.push({
@@ -644,12 +657,12 @@ export class Council extends EventEmitter {
         this.emitEvent({ type: 'round-end', sessionId: session.id, round, status: allYes ? 'consensus' : 'continue' });
 
         if (allYes) {
-          console.log(`[Council] Consensus reached at round ${round}`);
+          this.logger.info(`Consensus reached at round ${round}`);
           session.status = 'awaiting_user';
           break;
         } else {
           const yesCount = roundVotes.filter((v) => v).length;
-          console.log(`[Council] Votes: ${yesCount}/${this.config.agents.length} YES`);
+          this.logger.info(`Votes: ${yesCount}/${this.config.agents.length} YES`);
         }
 
         if (round < this.config.maxRounds) {
@@ -661,7 +674,7 @@ export class Council extends EventEmitter {
         session.status = 'error';
       } else if (session.status === 'running') {
         session.status = 'max_rounds';
-        console.log(`[Council] Max rounds (${this.config.maxRounds}) reached`);
+        this.logger.info(`Max rounds (${this.config.maxRounds}) reached`);
       }
 
       session.endTime = new Date().toISOString();
@@ -745,7 +758,7 @@ export class Council extends EventEmitter {
 
     content += `---\n\n${session.finalSummary || ''}`;
     fs.writeFileSync(filepath, content);
-    console.log(`[Council] Transcript saved: ${filepath}`);
+    this.logger.info(`Transcript saved: ${filepath}`);
   }
 
   // ─── Post-Processing: Review / Accept / Reject ──────────────────────────
@@ -909,7 +922,7 @@ export class Council extends EventEmitter {
           if (path.resolve(wtPath) === path.resolve(projectDir)) continue;
           await spawnAsync('git', ['-C', projectDir, 'worktree', 'remove', '--force', wtPath], {
             timeout: WORKTREE_CMD_TIMEOUT_MS,
-          }).catch((err) => console.error(`[Council] Failed to remove worktree ${wtPath}:`, err.message));
+          }).catch((err) => this.logger.error(`Failed to remove worktree ${wtPath}:`, err.message));
           result.worktreesRemoved.push(wtPath);
         }
       }
@@ -947,7 +960,7 @@ export class Council extends EventEmitter {
         if (branch.startsWith('council/')) {
           await spawnAsync('git', ['-C', projectDir, 'branch', '-D', branch], {
             timeout: GIT_CMD_TIMEOUT_MS,
-          }).catch((err) => console.error(`[Council] Failed to delete branch ${branch}:`, err.message));
+          }).catch((err) => this.logger.error(`Failed to delete branch ${branch}:`, err.message));
           result.branchesDeleted.push(branch);
         }
       }
@@ -994,9 +1007,7 @@ export class Council extends EventEmitter {
     // Update session status
     session.status = 'accepted';
 
-    console.log(
-      `[Council] Accepted: ${branchesDeleted.length} branches, ${worktreesRemoved.length} worktrees cleaned up`,
-    );
+    this.logger.info(`Accepted: ${branchesDeleted.length} branches, ${worktreesRemoved.length} worktrees cleaned up`);
 
     return { councilId: session.id, branchesDeleted, worktreesRemoved, planDeleted, reviewsDeleted };
   }
@@ -1042,7 +1053,7 @@ _Replace the tasks below with specific actionable items based on the feedback ab
     // Update session status
     session.status = 'rejected';
 
-    console.log(`[Council] Rejected: plan.md rewritten with feedback`);
+    this.logger.info('Rejected: plan.md rewritten with feedback');
 
     return { councilId: session.id, planRewritten: true, feedback };
   }

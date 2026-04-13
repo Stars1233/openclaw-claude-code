@@ -56,43 +56,43 @@ Persistent multi-engine coding session manager. Wraps Claude Code, Codex, Gemini
 
 ## Core Workflow
 
-```bash
-# 1. Start session (any engine)
-claude-code-skill session-start myproject -d /path/to/project --engine claude
-claude-code-skill session-start codex-task -d /path/to/project --engine codex
-claude-code-skill session-start gemini-task -d /path/to/project --engine gemini
-claude-code-skill session-start cursor-task -d /path/to/project --engine cursor
+```javascript
+// 1. Start session (any engine)
+claude_session_start({ name: "myproject", cwd: "/path/to/project", engine: "claude" })
+claude_session_start({ name: "codex-task", cwd: "/path/to/project", engine: "codex" })
+claude_session_start({ name: "gemini-task", cwd: "/path/to/project", engine: "gemini" })
+claude_session_start({ name: "cursor-task", cwd: "/path/to/project", engine: "cursor" })
 
-# 2. Send messages
-claude-code-skill session-send myproject "Fix the auth bug" --stream
+// 2. Send messages
+claude_session_send({ name: "myproject", message: "Fix the auth bug" })
 
-# 3. Check status / search history
-claude-code-skill session-status myproject
-claude-code-skill session-grep myproject "error"
+// 3. Check status / search history
+claude_session_status({ name: "myproject" })
+claude_session_grep({ name: "myproject", pattern: "error" })
 
-# 4. Stop when done
-claude-code-skill session-stop myproject
+// 4. Stop when done
+claude_session_stop({ name: "myproject" })
 ```
 
 ## Session Options
 
-| Option | Description |
-|--------|-------------|
-| `--engine` | `claude` (default), `codex`, `gemini`, `cursor` |
-| `--model` | Model name or alias (`opus`, `sonnet`, `haiku`, `gpt-5.4`, `gemini-pro`, `composer-2`) |
-| `--permission-mode` | `acceptEdits`, `auto`, `plan`, `bypassPermissions`, `default` |
-| `--effort` | `low`, `medium`, `high`, `max`, `auto` |
-| `--max-budget` | Cost limit in USD |
-| `--allowed-tools` | Comma-separated tool whitelist |
-| `--stream` | Real-time streaming output |
+| Parameter | Description |
+|-----------|-------------|
+| `engine` | `claude` (default), `codex`, `gemini`, `cursor` |
+| `model` | Model name or alias (`opus`, `sonnet`, `haiku`, `gpt-5.4`, `gemini-pro`, `composer-2`) |
+| `permissionMode` | `acceptEdits`, `auto`, `plan`, `bypassPermissions`, `default` |
+| `effort` | `low`, `medium`, `high`, `max`, `auto` |
+| `maxBudgetUsd` | Cost limit in USD |
+| `allowedTools` | List of allowed tool names |
 
 ## Multi-Agent Council
 
 Parallel agent collaboration with git worktree isolation and consensus voting. Agents can use different engines.
 
-```bash
-# Via TypeScript SDK
-manager.councilStart('Build a REST API', {
+```javascript
+// Start a council
+council_start({
+  task: 'Build a REST API',
   agents: [
     { name: 'Architect', emoji: '🏗️', persona: 'System design', engine: 'claude' },
     { name: 'Engineer', emoji: '⚙️', persona: 'Implementation', engine: 'codex' },
@@ -110,11 +110,11 @@ For details: see [references/council.md](references/council.md)
 
 Sessions can communicate. Idle sessions receive immediately; busy sessions queue.
 
-```bash
-claude-code-skill session-send-to sender receiver "Auth module needs rate limiting"
-claude-code-skill session-send-to monitor "*" "Build failed!"  # broadcast
-claude-code-skill session-inbox receiver
-claude-code-skill session-deliver-inbox receiver
+```javascript
+claude_session_send_to({ from: "sender", to: "receiver", message: "Auth module needs rate limiting" })
+claude_session_send_to({ from: "monitor", to: "*", message: "Build failed!" })  // broadcast
+claude_session_inbox({ name: "receiver" })
+claude_session_deliver_inbox({ name: "receiver" })
 ```
 
 ## Team Tools (All Engines)
@@ -122,9 +122,9 @@ claude-code-skill session-deliver-inbox receiver
 - **Claude**: native `/team` and `@teammate` commands
 - **Codex/Gemini/Cursor**: virtual teams via cross-session inbox routing
 
-```bash
-claude-code-skill session-team-list myproject
-claude-code-skill session-team-send myproject teammate "Review this"
+```javascript
+claude_team_list({ name: "myproject" })
+claude_team_send({ name: "myproject", teammate: "teammate", message: "Review this" })
 ```
 
 ## Ultraplan & Ultrareview
@@ -138,12 +138,12 @@ Both are async — start then poll status.
 
 | Category | Tools |
 |----------|-------|
-| Session Lifecycle | `session_start`, `send`, `stop`, `list`, `overview` |
-| Session Ops | `status`, `grep`, `compact`, `update_tools`, `switch_model` |
-| Inbox | `send_to`, `inbox`, `deliver_inbox` |
-| Teams | `agents_list`, `team_list`, `team_send` |
-| Council | `start`, `status`, `abort`, `inject`, `review`, `accept`, `reject` |
-| Ultra | `ultraplan_start/status`, `ultrareview_start/status` |
+| Session Lifecycle | `claude_session_start`, `claude_session_send`, `claude_session_stop`, `claude_session_list`, `claude_sessions_overview` |
+| Session Ops | `claude_session_status`, `claude_session_grep`, `claude_session_compact`, `claude_session_update_tools`, `claude_session_switch_model` |
+| Inbox | `claude_session_send_to`, `claude_session_inbox`, `claude_session_deliver_inbox` |
+| Teams | `claude_agents_list`, `claude_team_list`, `claude_team_send` |
+| Council | `council_start`, `council_status`, `council_abort`, `council_inject`, `council_review`, `council_accept`, `council_reject` |
+| Ultra | `ultraplan_start`, `ultraplan_status`, `ultrareview_start`, `ultrareview_status` |
 
 For full parameter reference: see [references/tools.md](references/tools.md)
 

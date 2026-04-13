@@ -19,6 +19,7 @@ import type { PluginConfig, EffortLevel, CouncilConfig, AgentPersona } from './t
 
 export { SessionManager } from './session-manager.js';
 export { PersistentClaudeSession } from './persistent-session.js';
+export { BaseOneShotSession, type OneShotEngineConfig } from './base-oneshot-session.js';
 export { PersistentCodexSession } from './persistent-codex-session.js';
 export { PersistentGeminiSession } from './persistent-gemini-session.js';
 export { PersistentCursorSession } from './persistent-cursor-session.js';
@@ -26,6 +27,9 @@ export { PersistentCustomSession } from './persistent-custom-session.js';
 export { Council, getDefaultCouncilConfig } from './council.js';
 export { parseConsensus, stripConsensusTags, hasConsensusMarker } from './consensus.js';
 export { sanitizeCwd, validateRegex, validateName } from './validation.js';
+export { type Logger, createConsoleLogger, nullLogger } from './logger.js';
+export { CircuitBreaker } from './circuit-breaker.js';
+export { InboxManager, type SessionLookup } from './inbox-manager.js';
 export type { ISession } from './types.js';
 export * from './types.js';
 

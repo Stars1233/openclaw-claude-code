@@ -63,7 +63,7 @@ function loadPersistedSessions(): Map<string, PersistedSession> {
 }
 
 // Atomic write: write to .tmp then rename to avoid corrupt reads on crash
-function savePersistedSessions(sessions: Map<string, PersistedSession>): void {
+function savePersistedSessions(sessions: Map<string, PersistedSession>, logger?: Logger): void {
   try {
     fs.mkdirSync(PERSIST_DIR, { recursive: true });
     const arr = Array.from(sessions.values());
@@ -71,27 +71,28 @@ function savePersistedSessions(sessions: Map<string, PersistedSession>): void {
     fs.writeFileSync(tmp, JSON.stringify(arr, null, 2));
     fs.renameSync(tmp, PERSIST_FILE);
   } catch (err) {
-    console.warn('[SessionManager] Failed to persist sessions:', (err as Error).message);
+    (logger || createConsoleLogger('SessionManager')).warn('Failed to persist sessions:', (err as Error).message);
   }
 }
 
 // Async version for hot-path (sendMessage, TTL cleanup)
-function savePersistedSessionsAsync(sessions: Map<string, PersistedSession>): void {
+function savePersistedSessionsAsync(sessions: Map<string, PersistedSession>, logger?: Logger): void {
+  const log = logger || createConsoleLogger('SessionManager');
   const arr = Array.from(sessions.values());
   const tmp = PERSIST_FILE + '.tmp';
   fs.mkdir(PERSIST_DIR, { recursive: true }, (mkdirErr) => {
     if (mkdirErr) {
-      console.error('[SessionManager] Failed to create persist dir:', mkdirErr.message);
+      log.error('Failed to create persist dir:', mkdirErr.message);
       return;
     }
     fs.writeFile(tmp, JSON.stringify(arr, null, 2), (writeErr) => {
       if (writeErr) {
-        console.error('[SessionManager] Failed to write session file:', writeErr.message);
+        log.error('Failed to write session file:', writeErr.message);
         return;
       }
       fs.rename(tmp, PERSIST_FILE, (renameErr) => {
         if (renameErr) {
-          console.error('[SessionManager] Failed to rename session file:', renameErr.message);
+          log.error('Failed to rename session file:', renameErr.message);
           // Clean up orphan tmp file
           fs.unlink(tmp, () => {});
         }
@@ -112,6 +113,9 @@ function makeDebounced(fn: () => void, ms: number): () => void {
   };
 }
 
+import { type Logger, createConsoleLogger } from './logger.js';
+import { CircuitBreaker } from './circuit-breaker.js';
+import { InboxManager, type SessionLookup } from './inbox-manager.js';
 import { sanitizeCwd, validateName } from './validation.js';
 import { PersistentClaudeSession } from './persistent-session.js';
 import { PersistentGeminiSession } from './persistent-gemini-session.js';
@@ -151,12 +155,8 @@ import {
   TEAM_LIST_TIMEOUT_MS,
   TEAM_SEND_TIMEOUT_MS,
   RESULT_TTL_MS,
-  MAX_INBOX_SIZE,
   ULTRAPLAN_TIMEOUT_MS,
   ULTRAREVIEW_POLL_INTERVAL_MS,
-  CIRCUIT_BREAKER_THRESHOLD,
-  CIRCUIT_BREAKER_BACKOFF_BASE_MS,
-  CIRCUIT_BREAKER_MAX_BACKOFF_MS,
   STOP_SIGKILL_DELAY_MS,
   SESSION_EVENT,
   DEFAULT_HISTORY_LIMIT,
@@ -203,9 +203,12 @@ export class SessionManager {
   private _proxyServer: http.Server | null = null;
   private _proxyPort: number | null = null;
   private _activePids = new Map<string, number>();
-  private _engineBreakers = new Map<string, { count: number; lastFailure: number; backoffUntil: number }>();
+  private _circuitBreaker = new CircuitBreaker();
+  private _inbox = new InboxManager();
+  private logger: Logger;
 
-  constructor(config?: Partial<PluginConfig>) {
+  constructor(config?: Partial<PluginConfig>, logger?: Logger) {
+    this.logger = logger || createConsoleLogger('SessionManager');
     this.pluginConfig = {
       claudeBin: config?.claudeBin || 'claude',
       defaultModel: config?.defaultModel,
@@ -225,7 +228,10 @@ export class SessionManager {
     // Clean up orphaned child processes from a previous unclean exit
     this._cleanupOrphanedPids();
     // Debounced async writer — at most one write per 5 seconds on hot paths
-    this._debouncedSave = makeDebounced(() => savePersistedSessionsAsync(this.persistedSessions), DEBOUNCED_SAVE_MS);
+    this._debouncedSave = makeDebounced(
+      () => savePersistedSessionsAsync(this.persistedSessions, this.logger),
+      DEBOUNCED_SAVE_MS,
+    );
 
     // Start TTL cleanup timer
     this.cleanupTimer = setInterval(() => this._cleanupIdleSessions(), CLEANUP_INTERVAL_MS);
@@ -293,7 +299,7 @@ export class SessionManager {
     const engine: EngineType = fullConfig.engine || persisted?.engine || 'claude';
 
     // Circuit breaker — reject early if engine is in backoff
-    this._checkCircuitBreaker(engine);
+    this._circuitBreaker.check(engine);
 
     if (engine === 'claude' && fullConfig.resolvedModel && !fullConfig.baseUrl) {
       if (!isClaudeModel(fullConfig.resolvedModel!)) {
@@ -305,17 +311,17 @@ export class SessionManager {
     }
     const session = this._createSession(engine, fullConfig);
 
-    session.on(SESSION_EVENT.LOG, (...args: unknown[]) => console.log(`[Session:${name}]`, ...args));
+    session.on(SESSION_EVENT.LOG, (...args: unknown[]) => this.logger.info(`[Session:${name}]`, ...args));
 
     try {
       await session.start();
     } catch (err) {
-      this._recordEngineFailure(engine);
+      this._circuitBreaker.recordFailure(engine);
       throw err;
     }
 
     // Engine started successfully — reset circuit breaker
-    this._resetEngineBreaker(engine);
+    this._circuitBreaker.reset(engine);
 
     // Track child process PID for orphan cleanup
     if (session.pid) {
@@ -426,7 +432,7 @@ export class SessionManager {
     this._savePids();
     // Explicit stop = user intent to end session — remove from disk too
     this.persistedSessions.delete(name);
-    savePersistedSessions(this.persistedSessions);
+    savePersistedSessions(this.persistedSessions, this.logger);
   }
 
   listSessions(): SessionInfo[] {
@@ -533,11 +539,11 @@ export class SessionManager {
       });
     } catch (err) {
       // Rollback: restart with original config
-      console.error(`[SessionManager] switchModel failed for '${name}', attempting rollback:`, err);
+      this.logger.error(`switchModel failed for '${name}', attempting rollback:`, err);
       try {
         await this.startSession({ ...oldConfig, name, resumeSessionId: sessionId });
       } catch (rollbackErr) {
-        console.error(`[SessionManager] Rollback also failed for '${name}':`, rollbackErr);
+        this.logger.error(`Rollback also failed for '${name}':`, rollbackErr);
       }
       throw new Error(`Failed to switch model for '${name}': ${(err as Error).message}`);
     }
@@ -608,11 +614,11 @@ export class SessionManager {
         resumeSessionId: sessionId,
       });
     } catch (err) {
-      console.error(`[SessionManager] updateTools failed for '${name}', attempting rollback:`, err);
+      this.logger.error(`updateTools failed for '${name}', attempting rollback:`, err);
       try {
         await this.startSession({ ...oldConfig, name, resumeSessionId: sessionId });
       } catch (rollbackErr) {
-        console.error(`[SessionManager] Rollback also failed for '${name}':`, rollbackErr);
+        this.logger.error(`Rollback also failed for '${name}':`, rollbackErr);
       }
       throw new Error(`Failed to update tools for '${name}': ${(err as Error).message}`);
     }
@@ -836,15 +842,7 @@ export class SessionManager {
       sessionNames: Array.from(this.sessions.keys()),
       uptime: process.uptime(),
       details,
-      circuitBreakers: Object.fromEntries(
-        [...this._engineBreakers].map(([engine, state]) => [
-          engine,
-          {
-            failures: state.count,
-            backoffUntil: state.backoffUntil > Date.now() ? new Date(state.backoffUntil).toISOString() : null,
-          },
-        ]),
-      ),
+      circuitBreakers: this._circuitBreaker.getStatus(),
     };
   }
 
@@ -877,8 +875,10 @@ export class SessionManager {
     for (const [name, managed] of this.sessions) {
       try {
         managed.session.stop();
-      } catch {}
-      console.log(`[SessionManager] Stopped session: ${name}`);
+      } catch {
+        // Best-effort — session may already be dead; must not block cleanup
+      }
+      this.logger.info(`Stopped session: ${name}`);
     }
     this.sessions.clear();
     // Clear PID tracking
@@ -891,7 +891,7 @@ export class SessionManager {
       this._proxyPort = null;
     }
     // Persist final state (TTL-expired sessions already removed by cleanup)
-    savePersistedSessions(this.persistedSessions);
+    savePersistedSessions(this.persistedSessions, this.logger);
   }
 
   // ─── Auto Proxy ───────────────────────────────────────────────────────
@@ -933,7 +933,7 @@ export class SessionManager {
     const gatewayKey = process.env.GATEWAY_KEY || gwConfig?.key;
 
     if (!gatewayUrl) {
-      console.log('[SessionManager] No OpenClaw gateway found — proxy not available');
+      this.logger.info('No OpenClaw gateway found — proxy not available');
       return null;
     }
 
@@ -985,12 +985,12 @@ export class SessionManager {
         const addr = server.address() as { port: number };
         this._proxyServer = server;
         this._proxyPort = addr.port;
-        console.log(`[SessionManager] Auto-proxy started on port ${addr.port} (gateway: ${gatewayUrl})`);
+        this.logger.info(`Auto-proxy started on port ${addr.port} (gateway: ${gatewayUrl})`);
         resolve(addr.port);
       });
 
       server.on('error', (err) => {
-        console.error('[SessionManager] Failed to start proxy server:', err.message);
+        this.logger.error('Failed to start proxy server:', err.message);
         resolve(null);
       });
     });
@@ -1062,10 +1062,10 @@ export class SessionManager {
           process.kill(pid, 0); // check if alive
           // Alive — but verify it's actually a coding CLI, not a recycled PID
           if (!this._isKnownCliProcess(pid)) {
-            console.log(`[SessionManager] PID ${pid} (session: ${name}) is alive but not a known CLI — skipping kill`);
+            this.logger.info(`PID ${pid} (session: ${name}) is alive but not a known CLI — skipping kill`);
             continue;
           }
-          console.log(`[SessionManager] Killing orphaned process ${pid} (session: ${name})`);
+          this.logger.info(`Killing orphaned process ${pid} (session: ${name})`);
           // Graceful shutdown: SIGTERM first
           try {
             process.kill(-pid, 'SIGTERM');
@@ -1103,36 +1103,7 @@ export class SessionManager {
     this._savePids();
   }
 
-  // ─── Circuit Breaker ──────────────────────────────────────────────────
-
-  private _checkCircuitBreaker(engine: string): void {
-    const breaker = this._engineBreakers.get(engine);
-    if (!breaker) return;
-    if (breaker.count >= CIRCUIT_BREAKER_THRESHOLD && Date.now() < breaker.backoffUntil) {
-      const remaining = Math.ceil((breaker.backoffUntil - Date.now()) / 1000);
-      throw new Error(
-        `Engine '${engine}' circuit breaker open after ${breaker.count} consecutive failures. ` +
-          `Retry in ${remaining}s.`,
-      );
-    }
-    // If backoff has expired, allow the attempt (will reset on success)
-  }
-
-  private _recordEngineFailure(engine: string): void {
-    const existing = this._engineBreakers.get(engine) || { count: 0, lastFailure: 0, backoffUntil: 0 };
-    existing.count++;
-    existing.lastFailure = Date.now();
-    const backoff = Math.min(
-      CIRCUIT_BREAKER_BACKOFF_BASE_MS * Math.pow(2, existing.count - 1),
-      CIRCUIT_BREAKER_MAX_BACKOFF_MS,
-    );
-    existing.backoffUntil = Date.now() + backoff;
-    this._engineBreakers.set(engine, existing);
-  }
-
-  private _resetEngineBreaker(engine: string): void {
-    this._engineBreakers.delete(engine);
-  }
+  // Circuit breaker is delegated to this._circuitBreaker (src/circuit-breaker.ts)
 
   private _getSession(name: string): ManagedSession {
     const managed = this.sessions.get(name);
@@ -1193,7 +1164,7 @@ export class SessionManager {
   private councilCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   councilStart(task: string, config: CouncilConfig): CouncilSession {
-    const council = new Council(config, this);
+    const council = new Council(config, this, this.logger);
     const initialSession = council.init(task);
 
     // Store BEFORE running so council_status/abort/inject work while it's active
@@ -1207,7 +1178,7 @@ export class SessionManager {
         this._scheduleCouncilCleanup(initialSession.id);
       })
       .catch((err) => {
-        console.error(`[SessionManager] Council ${initialSession.id} failed:`, err);
+        this.logger.error(`Council ${initialSession.id} failed:`, err);
         this._scheduleCouncilCleanup(initialSession.id);
       });
 
@@ -1225,7 +1196,7 @@ export class SessionManager {
       if (council) {
         const session = council.getSession();
         if (session?.status === 'running') {
-          console.log(`[SessionManager] Council ${id} still running at TTL expiry — aborting`);
+          this.logger.info(`Council ${id} still running at TTL expiry — aborting`);
           council.abort();
         }
       }
@@ -1277,109 +1248,33 @@ export class SessionManager {
     return result;
   }
 
-  // ─── Inbox (cross-session messaging) ────────────────────────────────
+  // ─── Inbox (cross-session messaging) — delegated to InboxManager ────
 
-  private inboxes = new Map<string, InboxMessage[]>();
-  private static _escapeXmlAttr(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  private get _sessionLookup(): SessionLookup {
+    return {
+      getSession: (name) => this.sessions.get(name),
+      exists: (name) => this.sessions.has(name),
+      allNames: () => this.sessions.keys(),
+    };
   }
 
-  /**
-   * Send a message from one session to another.
-   * If the target is idle, the message is delivered as a user turn.
-   * If the target is busy, it's queued in the inbox for later delivery.
-   */
   async sessionSendTo(
     from: string,
     to: string,
     message: string,
     summary?: string,
   ): Promise<{ delivered: boolean; queued: boolean }> {
-    // Validate both sessions exist
-    if (!this.sessions.has(from)) throw new Error(`Sender session '${from}' not found`);
-    if (to !== '*' && !this.sessions.has(to)) throw new Error(`Target session '${to}' not found`);
-
-    const inboxMsg: InboxMessage = {
-      from,
-      text: message,
-      timestamp: new Date().toISOString(),
-      read: false,
-      summary,
-    };
-
-    // Broadcast
-    if (to === '*') {
-      let delivered = 0;
-      for (const [name] of this.sessions) {
-        if (name === from) continue;
-        try {
-          const ok = await this._deliverOrQueue(name, inboxMsg);
-          if (ok) delivered++;
-        } catch (err) {
-          console.error(`[SessionManager] Broadcast delivery to '${name}' failed:`, (err as Error).message);
-        }
-      }
-      return { delivered: delivered > 0, queued: delivered === 0 };
-    }
-
-    const delivered = await this._deliverOrQueue(to, inboxMsg);
-    return { delivered, queued: !delivered };
+    return this._inbox.sendTo(from, to, message, this._sessionLookup, summary, (name, err) => {
+      this.logger.error(`Broadcast delivery to '${name}' failed:`, err.message);
+    });
   }
 
-  private _wrapCrossSessionMessage(msg: InboxMessage): string {
-    const esc = SessionManager._escapeXmlAttr;
-    const attrs = `from="${esc(msg.from)}"${msg.summary ? ` summary="${esc(msg.summary)}"` : ''}`;
-    return `<cross-session-message ${attrs}>\n${msg.text}\n</cross-session-message>`;
-  }
-
-  private async _deliverOrQueue(sessionName: string, msg: InboxMessage): Promise<boolean> {
-    const managed = this.sessions.get(sessionName);
-    if (!managed) return false;
-
-    // If session is idle, deliver directly
-    if (!managed.session.isBusy && managed.session.isReady) {
-      try {
-        await managed.session.send(this._wrapCrossSessionMessage(msg), { waitForComplete: false });
-        msg.read = true;
-        return true;
-      } catch {
-        // Fall through to queue
-      }
-    }
-
-    // Queue in inbox (with size cap — drop oldest read messages first)
-    if (!this.inboxes.has(sessionName)) this.inboxes.set(sessionName, []);
-    const inbox = this.inboxes.get(sessionName)!;
-    if (inbox.length >= MAX_INBOX_SIZE) {
-      const readIdx = inbox.findIndex((m) => m.read);
-      if (readIdx >= 0) inbox.splice(readIdx, 1);
-      else inbox.shift(); // drop oldest unread as last resort
-    }
-    inbox.push(msg);
-    return false;
-  }
-
-  /** Read inbox messages for a session */
   sessionInbox(name: string, unreadOnly = true): InboxMessage[] {
-    const inbox = this.inboxes.get(name) || [];
-    return unreadOnly ? inbox.filter((m) => !m.read) : inbox;
+    return this._inbox.inbox(name, unreadOnly);
   }
 
-  /** Deliver all queued messages to an idle session, then clear */
   async sessionDeliverInbox(name: string): Promise<number> {
-    const managed = this._getSession(name);
-    const inbox = this.inboxes.get(name);
-    if (!inbox || inbox.length === 0) return 0;
-
-    const unread = inbox.filter((m) => !m.read);
-    if (unread.length === 0) return 0;
-
-    // Format all unread messages into one delivery
-    const formatted = unread.map((m) => this._wrapCrossSessionMessage(m)).join('\n\n');
-
-    await managed.session.send(formatted, { waitForComplete: false });
-    for (const m of unread) m.read = true;
-    return unread.length;
+    return this._inbox.deliverInbox(name, this._sessionLookup);
   }
 
   // ─── Ultraplan ────────────────────────────────────────────────────────
@@ -1408,13 +1303,13 @@ export class SessionManager {
       .finally(() => {
         // Cleanup session
         this.stopSession(sessionName).catch((err) => {
-          console.error(`[SessionManager] Failed to stop ultraplan session '${sessionName}':`, err);
+          this.logger.error(`Failed to stop ultraplan session '${sessionName}':`, err);
         });
         setTimeout(() => {
           // Mark as error if still running at TTL expiry
           const plan = this.ultraplans.get(id);
           if (plan?.status === 'running') {
-            console.log(`[SessionManager] Ultraplan ${id} still running at TTL expiry — marking as error`);
+            this.logger.info(`Ultraplan ${id} still running at TTL expiry — marking as error`);
             plan.status = 'error';
             plan.error = 'Timed out (TTL expired)';
             plan.endTime = new Date().toISOString();
@@ -1676,10 +1571,12 @@ export class SessionManager {
     const now = Date.now();
     for (const [name, managed] of this.sessions) {
       if (now - managed.lastActivity > ttlMs) {
-        console.log(`[SessionManager] Cleaning up idle in-memory session: ${name}`);
+        this.logger.info(`Cleaning up idle in-memory session: ${name}`);
         try {
           managed.session.stop();
-        } catch {}
+        } catch {
+          // Best-effort — session may already be dead; must not block TTL cleanup
+        }
         this.sessions.delete(name);
         // NOTE: do NOT delete from persistedSessions — idle cleanup is
         // in-memory only. Persisted entries survive for PERSIST_DISK_TTL_MS

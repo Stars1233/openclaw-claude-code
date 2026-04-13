@@ -71,7 +71,7 @@ When `OPENAI_COMPAT_STATUS_URL` is set (full HTTP URL), each chat completion sen
 | `activity` | string | Short human-readable line, e.g. `Processing request...`, `Reading: foo.ts`, `Running: npm test...`. |
 | `tool` | string \| null | Tool name when `state === working`, otherwise `null`. |
 
-Failures are ignored (no retries). Use this from a small local HTTP handler that forwards into your webchat status bar (e.g. sasha-doctor).
+Failures are ignored (no retries). Use this from a small local HTTP handler that forwards status into your webchat UI.
 
 ## Environment variables
 
@@ -104,7 +104,7 @@ Sample response:
       "key": "sys-a3f81c9d0b27",
       "session_name": "openai-sys-a3f81c9d0b27",
       "model": "claude-opus-4-6",
-      "cwd": "/Users/fanggan/clawd",
+      "cwd": "/home/user/projects",
       "created": "2026-04-09T03:12:18.441Z",
       "turns": 14,
       "tokens_in": 248312,

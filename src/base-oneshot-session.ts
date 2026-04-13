@@ -1,0 +1,295 @@
+/**
+ * Base class for one-shot (process-per-send) session engines.
+ *
+ * Shared by Codex, Gemini, and Cursor — eliminates ~200 LOC of duplication
+ * per engine. Subclasses only implement _run() (engine-specific CLI invocation)
+ * and optionally override _cleanupProc() for extra cleanup (readline, streams).
+ */
+
+import { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import {
+  type SessionConfig,
+  type SessionStats,
+  type EffortLevel,
+  type StreamEvent,
+  type ISession,
+  type SessionSendOptions,
+  type TurnResult,
+  type CostBreakdown,
+  getModelPricing as _getModelPricingBase,
+} from './types.js';
+import { resolveAlias } from './models.js';
+import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
+
+// ─── Engine Configuration ──────────────────────────────────────────────────
+
+/**
+ * Parameterizes engine-specific behavior without requiring method overrides.
+ * Passed to the BaseOneShotSession constructor by each subclass.
+ */
+export interface OneShotEngineConfig {
+  /** Prefix for session ID generation, e.g. 'codex', 'gemini', 'cursor' */
+  enginePrefix: string;
+  /** Fallback model for pricing lookups when session has no explicit model */
+  defaultModel: string;
+  /** Model name shown in getCost() output; defaults to defaultModel if omitted */
+  defaultModelDisplay?: string;
+  /** Whether this engine tracks cached token pricing (Codex=false, Gemini/Cursor=true) */
+  supportsCachedTokens: boolean;
+  /** Human-readable engine name for compact() no-op message */
+  engineDisplayName: string;
+}
+
+// ─── BaseOneShotSession ────────────────────────────────────────────────────
+
+export abstract class BaseOneShotSession extends EventEmitter implements ISession {
+  protected options: SessionConfig;
+  protected engineBin: string;
+  protected engineCfg: OneShotEngineConfig;
+
+  private _isReady = false;
+  private _isPaused = false;
+  private _isBusy = false;
+  protected currentProc: ChildProcess | null = null;
+  private currentRequestId = 0;
+  private _startTime: string | null = null;
+  private _history: Array<{ time: string; type: string; event: unknown }> = [];
+
+  public sessionId?: string;
+  protected _stats = {
+    turns: 0,
+    toolCalls: 0,
+    toolErrors: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    cachedTokens: 0,
+    costUsd: 0,
+    lastActivity: null as string | null,
+  };
+
+  constructor(config: SessionConfig, bin: string, engineCfg: OneShotEngineConfig) {
+    super();
+    this.engineBin = bin;
+    this.engineCfg = engineCfg;
+    this.options = {
+      ...config,
+      permissionMode: config.permissionMode || 'bypassPermissions',
+    };
+  }
+
+  // ── Property Accessors ─────────────────────────────────────────────────
+
+  get pid(): number | undefined {
+    return this.currentProc?.pid ?? undefined;
+  }
+  get isReady(): boolean {
+    return this._isReady;
+  }
+  get isPaused(): boolean {
+    return this._isPaused;
+  }
+  get isBusy(): boolean {
+    return this._isBusy;
+  }
+
+  // ── start() ────────────────────────────────────────────────────────────
+
+  async start(): Promise<this> {
+    if (this.options.cwd) {
+      this.options.cwd = path.resolve(this.options.cwd);
+      if (!fs.existsSync(this.options.cwd)) {
+        fs.mkdirSync(this.options.cwd, { recursive: true });
+      }
+    }
+    this.sessionId = `${this.engineCfg.enginePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    this._startTime = new Date().toISOString();
+    this._isReady = true;
+    this.emit(SESSION_EVENT.READY);
+    this.emit(SESSION_EVENT.INIT, { type: 'system', subtype: 'init', session_id: this.sessionId });
+    return this;
+  }
+
+  // ── send() ─────────────────────────────────────────────────────────────
+
+  async send(
+    message: string | unknown[],
+    options: SessionSendOptions = {},
+  ): Promise<TurnResult | { requestId: number; sent: boolean }> {
+    if (!this._isReady) throw new Error('Session not ready. Call start() first.');
+    const requestId = ++this.currentRequestId;
+    const textMessage = typeof message === 'string' ? message : JSON.stringify(message);
+
+    if (!options.waitForComplete) {
+      this._run(textMessage, options).catch((err) => this.emit(SESSION_EVENT.ERROR, err));
+      return { requestId, sent: true };
+    }
+
+    this._isBusy = true;
+    try {
+      return await this._run(textMessage, options);
+    } finally {
+      this._isBusy = false;
+    }
+  }
+
+  /** Engine-specific: spawn the CLI and return a TurnResult. */
+  protected abstract _run(message: string, options: SessionSendOptions): Promise<TurnResult>;
+
+  // ── getStats() ─────────────────────────────────────────────────────────
+
+  getStats(): SessionStats & { sessionId?: string; uptime: number } {
+    return {
+      turns: this._stats.turns,
+      toolCalls: this._stats.toolCalls,
+      toolErrors: this._stats.toolErrors,
+      tokensIn: this._stats.tokensIn,
+      tokensOut: this._stats.tokensOut,
+      cachedTokens: this._stats.cachedTokens,
+      costUsd: Math.round(this._stats.costUsd * 10000) / 10000,
+      isReady: this._isReady,
+      startTime: this._startTime,
+      lastActivity: this._stats.lastActivity,
+      contextPercent: 0,
+      sessionId: this.sessionId,
+      uptime: this._startTime ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000) : 0,
+    };
+  }
+
+  // ── getHistory() ───────────────────────────────────────────────────────
+
+  getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
+    return this._history.slice(-limit);
+  }
+
+  // ── compact() ──────────────────────────────────────────────────────────
+
+  async compact(_summary?: string): Promise<TurnResult> {
+    const event: StreamEvent = {
+      type: 'result',
+      result: `${this.engineCfg.engineDisplayName} engine does not support compaction`,
+    };
+    return { text: event.result as string, event };
+  }
+
+  // ── Effort ─────────────────────────────────────────────────────────────
+
+  getEffort(): EffortLevel {
+    return this.options.effort || 'auto';
+  }
+  setEffort(level: EffortLevel): void {
+    this.options.effort = level;
+  }
+
+  // ── getCost() ──────────────────────────────────────────────────────────
+
+  getCost(): CostBreakdown {
+    const pricing = this._getModelPricing();
+    const displayModel = this.options.model || this.engineCfg.defaultModelDisplay || this.engineCfg.defaultModel;
+
+    if (this.engineCfg.supportsCachedTokens) {
+      const cachedPrice = pricing.cached ?? 0;
+      const nonCachedIn = Math.max(0, this._stats.tokensIn - this._stats.cachedTokens);
+      return {
+        model: displayModel,
+        tokensIn: this._stats.tokensIn,
+        tokensOut: this._stats.tokensOut,
+        cachedTokens: this._stats.cachedTokens,
+        pricing: { inputPer1M: pricing.input, outputPer1M: pricing.output, cachedPer1M: cachedPrice || undefined },
+        breakdown: {
+          inputCost: (nonCachedIn / 1_000_000) * pricing.input,
+          cachedCost: (this._stats.cachedTokens / 1_000_000) * cachedPrice,
+          outputCost: (this._stats.tokensOut / 1_000_000) * pricing.output,
+        },
+        totalUsd: this._stats.costUsd,
+      };
+    }
+    // Non-cached path (e.g. Codex)
+    return {
+      model: displayModel,
+      tokensIn: this._stats.tokensIn,
+      tokensOut: this._stats.tokensOut,
+      cachedTokens: 0,
+      pricing: { inputPer1M: pricing.input, outputPer1M: pricing.output, cachedPer1M: undefined },
+      breakdown: {
+        inputCost: (this._stats.tokensIn / 1_000_000) * pricing.input,
+        cachedCost: 0,
+        outputCost: (this._stats.tokensOut / 1_000_000) * pricing.output,
+      },
+      totalUsd: this._stats.costUsd,
+    };
+  }
+
+  // ── resolveModel() ─────────────────────────────────────────────────────
+
+  resolveModel(alias: string): string {
+    return resolveAlias(alias);
+  }
+
+  // ── pause / resume ─────────────────────────────────────────────────────
+
+  pause(): void {
+    this._isPaused = true;
+    this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
+  }
+  resume(): void {
+    this._isPaused = false;
+    this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
+  }
+
+  // ── stop() ─────────────────────────────────────────────────────────────
+
+  stop(): void {
+    this._cleanupProc();
+    this._isReady = false;
+    this._isPaused = false;
+    this.emit(SESSION_EVENT.CLOSE, 143);
+  }
+
+  /** Override in subclasses that need extra cleanup (readline, stream destroy). */
+  protected _cleanupProc(): void {
+    if (this.currentProc) {
+      try {
+        this.currentProc.kill('SIGTERM');
+      } catch {
+        // Process may have already exited
+      }
+      this.currentProc = null;
+    }
+  }
+
+  // ── Protected Helpers (for subclass _run() implementations) ────────────
+
+  protected _getModelPricing() {
+    return _getModelPricingBase(this.options.model, this.engineCfg.defaultModel);
+  }
+
+  protected _recordTurnComplete(): void {
+    this._stats.turns++;
+    this._stats.lastActivity = new Date().toISOString();
+  }
+
+  protected _addHistory(event: { text: string; code: number | null }): void {
+    const now = this._stats.lastActivity || new Date().toISOString();
+    this._history.push({ time: now, type: 'result', event });
+    if (this._history.length > MAX_HISTORY_ITEMS) this._history.shift();
+  }
+
+  protected _updateCost(): void {
+    const pricing = this._getModelPricing();
+    if (this.engineCfg.supportsCachedTokens) {
+      const cachedPrice = pricing.cached ?? 0;
+      const nonCachedIn = Math.max(0, this._stats.tokensIn - this._stats.cachedTokens);
+      this._stats.costUsd =
+        (nonCachedIn / 1_000_000) * pricing.input +
+        (this._stats.cachedTokens / 1_000_000) * cachedPrice +
+        (this._stats.tokensOut / 1_000_000) * pricing.output;
+    } else {
+      this._stats.costUsd =
+        (this._stats.tokensIn / 1_000_000) * pricing.input + (this._stats.tokensOut / 1_000_000) * pricing.output;
+    }
+  }
+}

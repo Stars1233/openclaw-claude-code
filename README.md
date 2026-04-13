@@ -196,12 +196,16 @@ src/
 ├── models.ts                   # Centralized model registry (pricing, aliases, engines)
 ├── types.ts                    # Shared types, ISession interface, re-exports from models
 ├── constants.ts                # Shared constants (timeouts, limits, thresholds)
+├── logger.ts                   # Structured Logger interface + console implementation
+├── base-oneshot-session.ts     # Abstract base class for one-shot engines (Codex/Gemini/Cursor)
 ├── persistent-session.ts       # Claude Code engine (ISession)
-├── persistent-codex-session.ts # Codex engine (ISession)
-├── persistent-gemini-session.ts # Gemini engine (ISession)
-├── persistent-cursor-session.ts # Cursor Agent engine (ISession)
+├── persistent-codex-session.ts # Codex engine (extends BaseOneShotSession)
+├── persistent-gemini-session.ts # Gemini engine (extends BaseOneShotSession)
+├── persistent-cursor-session.ts # Cursor Agent engine (extends BaseOneShotSession)
 ├── persistent-custom-session.ts # Custom engine — any CLI via config (ISession)
 ├── session-manager.ts          # Multi-session orchestration + council management
+├── circuit-breaker.ts          # Engine failure tracking with exponential backoff
+├── inbox-manager.ts            # Cross-session messaging (inbox)
 ├── council.ts                  # Multi-agent council orchestration
 ├── consensus.ts                # Consensus vote parsing
 ├── openai-compat.ts            # OpenAI-compatible /v1/chat/completions

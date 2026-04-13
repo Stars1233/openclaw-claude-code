@@ -10,7 +10,8 @@ managed session layer. Key source files:
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Plugin entry — registers all 27 tools with OpenClaw SDK |
-| `src/session-manager.ts` | Core orchestrator — session lifecycle, inbox, council, ultraplan/ultrareview |
+| `src/session-manager.ts` | Core orchestrator — session lifecycle, council, ultraplan/ultrareview |
+| `src/base-oneshot-session.ts` | Abstract base class for one-shot (process-per-send) engines |
 | `src/persistent-session.ts` | Claude Code CLI wrapper (spawn, JSON protocol, stream parsing) |
 | `src/persistent-codex-session.ts` | Codex CLI wrapper (`codex exec --full-auto`) |
 | `src/persistent-gemini-session.ts` | Gemini CLI wrapper (`gemini -p --output-format stream-json`) |
@@ -20,6 +21,9 @@ managed session layer. Key source files:
 | `src/consensus.ts` | Consensus voting parser for council |
 | `src/models.ts` | Centralized model registry — pricing, aliases, engine/provider mapping |
 | `src/types.ts` | Shared types, interfaces; re-exports from `models.ts` |
+| `src/logger.ts` | Structured `Logger` interface + console implementation |
+| `src/circuit-breaker.ts` | Engine failure tracking with exponential backoff |
+| `src/inbox-manager.ts` | Cross-session messaging (inbox) manager |
 | `src/embedded-server.ts` | HTTP server for standalone/CLI usage |
 | `src/openai-compat.ts` | OpenAI-compatible `/v1/chat/completions` endpoint |
 | `src/proxy/` | Multi-model proxy (Gemini, GPT via Anthropic format translation) |

@@ -191,7 +191,9 @@ export function parseToolCallsFromText(text: string): ParsedToolCalls {
     try {
       const parsed = JSON.parse(m[1].trim()) as unknown;
       const arr = Array.isArray(parsed) ? parsed : [parsed];
-      for (const call of arr as Array<{ name: string; arguments?: unknown }>) {
+      for (const raw of arr) {
+        const call = raw as Record<string, unknown>;
+        if (!call || typeof call !== 'object' || typeof call.name !== 'string') continue;
         let args: string;
         if (typeof call.arguments === 'string') {
           try {
@@ -590,8 +592,8 @@ export async function handleChatCompletion(
 }
 
 // ─── Status Reporting ───────────────────────────────────────────────────────
-// Push tool/thinking status to sasha-doctor so the webchat status bar shows
-// what the CLI agent is doing. Best-effort fire-and-forget.
+// Push tool/thinking status to an external webhook so a webchat status bar
+// can show what the CLI agent is doing. Best-effort fire-and-forget.
 
 /**
  * Optional status webhook — set `OPENAI_COMPAT_STATUS_URL` to an HTTP endpoint

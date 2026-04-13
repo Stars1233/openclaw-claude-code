@@ -11,124 +11,42 @@
  *   - Consistent lifecycle semantics (start/stop/pause/resume)
  */
 
-import { spawn, ChildProcess } from 'node:child_process';
-import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
 import * as readline from 'node:readline';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
-import {
-  type SessionConfig,
-  type SessionStats,
-  type EffortLevel,
-  type StreamEvent,
-  type ISession,
-  type SessionSendOptions,
-  type TurnResult,
-  type CostBreakdown,
-  getModelPricing as _getModelPricingBase,
-} from './types.js';
-import { resolveAlias, estimateTokens } from './models.js';
-
-import { MAX_HISTORY_ITEMS, DEFAULT_HISTORY_LIMIT, SESSION_EVENT } from './constants.js';
-
-function getModelPricing(model?: string) {
-  return _getModelPricingBase(model, 'gemini-2.5-pro');
-}
+import type { SessionConfig, SessionSendOptions, StreamEvent, TurnResult } from './types.js';
+import { estimateTokens } from './models.js';
+import { SESSION_EVENT } from './constants.js';
+import { BaseOneShotSession } from './base-oneshot-session.js';
 
 // ─── PersistentGeminiSession ────────────────────────────────────────────────
 
-export class PersistentGeminiSession extends EventEmitter implements ISession {
-  private options: SessionConfig;
+export class PersistentGeminiSession extends BaseOneShotSession {
   private _currentRl: readline.Interface | null = null;
-  private geminiBin: string;
-  private _isReady = false;
-  private _isPaused = false;
-  private _isBusy = false;
-  private currentProc: ChildProcess | null = null;
-  private currentRequestId = 0;
-  private _startTime: string | null = null;
-  private _history: Array<{ time: string; type: string; event: unknown }> = [];
-
-  public sessionId?: string;
-  private _stats = {
-    turns: 0,
-    toolCalls: 0,
-    toolErrors: 0,
-    tokensIn: 0,
-    tokensOut: 0,
-    cachedTokens: 0,
-    costUsd: 0,
-    lastActivity: null as string | null,
-  };
 
   constructor(config: SessionConfig, geminiBin?: string) {
-    super();
-    this.geminiBin = geminiBin || process.env.GEMINI_BIN || 'gemini';
-    this.options = {
-      ...config,
-      permissionMode: config.permissionMode || 'bypassPermissions',
-    };
+    super(config, geminiBin || process.env.GEMINI_BIN || 'gemini', {
+      enginePrefix: 'gemini',
+      defaultModel: 'gemini-2.5-pro',
+      supportsCachedTokens: true,
+      engineDisplayName: 'Gemini',
+    });
   }
 
-  get pid(): number | undefined {
-    return this.currentProc?.pid ?? undefined;
-  }
-
-  get isReady(): boolean {
-    return this._isReady;
-  }
-  get isPaused(): boolean {
-    return this._isPaused;
-  }
-  get isBusy(): boolean {
-    return this._isBusy;
-  }
-
-  // ─── Start ───────────────────────────────────────────────────────────────
-
-  async start(): Promise<this> {
-    // Normalize CWD to prevent path traversal
-    if (this.options.cwd) {
-      this.options.cwd = path.resolve(this.options.cwd);
-      if (!fs.existsSync(this.options.cwd)) {
-        fs.mkdirSync(this.options.cwd, { recursive: true });
-      }
+  protected override _cleanupProc(): void {
+    if (this._currentRl) {
+      this._currentRl.close();
+      this._currentRl = null;
     }
-
-    this.sessionId = `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    this._startTime = new Date().toISOString();
-    this._isReady = true;
-    this.emit(SESSION_EVENT.READY);
-    this.emit(SESSION_EVENT.INIT, { type: 'system', subtype: 'init', session_id: this.sessionId });
-    return this;
+    if (this.currentProc) {
+      this.currentProc.stdin?.end();
+      this.currentProc.stdout?.destroy();
+      this.currentProc.stderr?.destroy();
+    }
+    super._cleanupProc();
   }
 
-  // ─── Send ────────────────────────────────────────────────────────────────
-
-  async send(
-    message: string | unknown[],
-    options: SessionSendOptions = {},
-  ): Promise<TurnResult | { requestId: number; sent: boolean }> {
-    if (!this._isReady) throw new Error('Session not ready. Call start() first.');
-
-    const requestId = ++this.currentRequestId;
-    const textMessage = typeof message === 'string' ? message : JSON.stringify(message);
-
-    if (!options.waitForComplete) {
-      this._runGemini(textMessage, options).catch((err) => this.emit(SESSION_EVENT.ERROR, err));
-      return { requestId, sent: true };
-    }
-
-    this._isBusy = true;
-    try {
-      return await this._runGemini(textMessage, options);
-    } finally {
-      this._isBusy = false;
-    }
-  }
-
-  private async _runGemini(message: string, options: SessionSendOptions): Promise<TurnResult> {
+  protected _run(message: string, options: SessionSendOptions): Promise<TurnResult> {
     const args: string[] = ['-p', message, '--output-format', 'stream-json'];
 
     // Permission mode
@@ -138,7 +56,6 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
       args.push('--sandbox');
     }
 
-    // Model
     if (this.options.model) args.push('--model', this.options.model);
 
     const timeout = options.timeout || 300_000;
@@ -149,7 +66,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
       let settled = false;
       let gotUsageFromEvents = false;
 
-      const proc = spawn(this.geminiBin, args, {
+      const proc = spawn(this.engineBin, args, {
         cwd: this.options.cwd,
         env: { ...process.env },
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -179,7 +96,9 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
           resultText.value += line + '\n';
           try {
             options.callbacks?.onText?.(line + '\n');
-          } catch {}
+          } catch {
+            // User callback error
+          }
           this.emit(SESSION_EVENT.TEXT, line + '\n');
         }
       });
@@ -204,9 +123,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         if (settled) return;
         settled = true;
 
-        const now = new Date().toISOString();
-        this._stats.turns++;
-        this._stats.lastActivity = now;
+        this._recordTurnComplete();
 
         // Fallback: estimate tokens if stream events didn't provide usage
         if (!gotUsageFromEvents && resultText.value.length > 0) {
@@ -215,8 +132,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
           this._updateCost();
         }
 
-        this._history.push({ time: now, type: 'result', event: { text: resultText.value, code } });
-        if (this._history.length > MAX_HISTORY_ITEMS) this._history.shift();
+        this._addHistory({ text: resultText.value, code });
 
         // Gemini exit codes: 0=success, 53=turn limit, 1=error, 42=input error
         let stopReason = 'end_turn';
@@ -233,10 +149,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         this.emit(SESSION_EVENT.TURN_COMPLETE, event);
 
         // Exit code 53 = turn limit — a valid completion, not an error
-        if (code !== 0 && code !== 53 && !resultText.value) {
-          reject(new Error(stderr || `Gemini exited with code ${code}`));
-        } else if (code !== 0 && code !== 53) {
-          // Non-zero exit with output (e.g., echoed prompt) — still an error
+        if (code !== 0 && code !== 53) {
           reject(new Error(stderr || `Gemini exited with code ${code}`));
         } else {
           resolve({ text: resultText.value, event });
@@ -253,7 +166,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
     });
   }
 
-  // ─── Stream Event Handling ───────────────────────────────────────────────
+  // ─── Stream Event Handling ────────────────────────────────────────────
 
   private _handleStreamEvent(
     event: Record<string, unknown>,
@@ -272,7 +185,9 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
           resultText.value += text;
           try {
             options.callbacks?.onText?.(text);
-          } catch {}
+          } catch {
+            // User callback error
+          }
           this.emit(SESSION_EVENT.TEXT, text);
         }
         break;
@@ -282,14 +197,18 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         this._stats.toolCalls++;
         try {
           options.callbacks?.onToolUse?.(event);
-        } catch {}
+        } catch {
+          // User callback error
+        }
         this.emit(SESSION_EVENT.TOOL_USE, event);
         break;
 
       case 'tool_result':
         try {
           options.callbacks?.onToolResult?.(event);
-        } catch {}
+        } catch {
+          // User callback error
+        }
         if (event.is_error) this._stats.toolErrors++;
         this.emit(SESSION_EVENT.TOOL_RESULT, event);
         break;
@@ -313,107 +232,7 @@ export class PersistentGeminiSession extends EventEmitter implements ISession {
         break;
 
       default:
-        // Unknown event type — ignore gracefully
         break;
     }
-  }
-
-  // ─── Utilities ───────────────────────────────────────────────────────────
-
-  getStats(): SessionStats & { sessionId?: string; uptime: number } {
-    return {
-      turns: this._stats.turns,
-      toolCalls: this._stats.toolCalls,
-      toolErrors: this._stats.toolErrors,
-      tokensIn: this._stats.tokensIn,
-      tokensOut: this._stats.tokensOut,
-      cachedTokens: this._stats.cachedTokens,
-      costUsd: Math.round(this._stats.costUsd * 10000) / 10000,
-      isReady: this._isReady,
-      startTime: this._startTime,
-      lastActivity: this._stats.lastActivity,
-      contextPercent: 0, // Gemini CLI doesn't expose context usage in headless mode
-      sessionId: this.sessionId,
-      uptime: this._startTime ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000) : 0,
-    };
-  }
-
-  getHistory(limit = DEFAULT_HISTORY_LIMIT): Array<{ time: string; type: string; event: unknown }> {
-    return this._history.slice(-limit);
-  }
-
-  async compact(_summary?: string): Promise<TurnResult> {
-    const event: StreamEvent = { type: 'result', result: 'Gemini engine does not support compaction' };
-    return { text: event.result as string, event };
-  }
-
-  getEffort(): EffortLevel {
-    return this.options.effort || 'auto';
-  }
-  setEffort(level: EffortLevel): void {
-    this.options.effort = level;
-  }
-
-  getCost(): CostBreakdown {
-    const pricing = getModelPricing(this.options.model);
-    const cachedPrice = pricing.cached ?? 0;
-    const nonCachedIn = Math.max(0, this._stats.tokensIn - this._stats.cachedTokens);
-    return {
-      model: this.options.model || 'gemini-2.5-pro',
-      tokensIn: this._stats.tokensIn,
-      tokensOut: this._stats.tokensOut,
-      cachedTokens: this._stats.cachedTokens,
-      pricing: { inputPer1M: pricing.input, outputPer1M: pricing.output, cachedPer1M: cachedPrice || undefined },
-      breakdown: {
-        inputCost: (nonCachedIn / 1_000_000) * pricing.input,
-        cachedCost: (this._stats.cachedTokens / 1_000_000) * cachedPrice,
-        outputCost: (this._stats.tokensOut / 1_000_000) * pricing.output,
-      },
-      totalUsd: this._stats.costUsd,
-    };
-  }
-
-  resolveModel(alias: string): string {
-    return resolveAlias(alias);
-  }
-
-  pause(): void {
-    this._isPaused = true;
-    this.emit(SESSION_EVENT.PAUSED, { sessionId: this.sessionId });
-  }
-  resume(): void {
-    this._isPaused = false;
-    this.emit(SESSION_EVENT.RESUMED, { sessionId: this.sessionId });
-  }
-
-  stop(): void {
-    if (this._currentRl) {
-      this._currentRl.close();
-      this._currentRl = null;
-    }
-    if (this.currentProc) {
-      this.currentProc.stdin?.end();
-      this.currentProc.stdout?.destroy();
-      this.currentProc.stderr?.destroy();
-      try {
-        this.currentProc.kill('SIGTERM');
-      } catch {}
-      this.currentProc = null;
-    }
-    this._isReady = false;
-    this._isPaused = false;
-    this.emit(SESSION_EVENT.CLOSE, 143);
-  }
-
-  // ─── Private ─────────────────────────────────────────────────────────────
-
-  private _updateCost(): void {
-    const pricing = getModelPricing(this.options.model);
-    const cachedPrice = pricing.cached ?? 0;
-    const nonCachedIn = Math.max(0, this._stats.tokensIn - this._stats.cachedTokens);
-    this._stats.costUsd =
-      (nonCachedIn / 1_000_000) * pricing.input +
-      (this._stats.cachedTokens / 1_000_000) * cachedPrice +
-      (this._stats.tokensOut / 1_000_000) * pricing.output;
   }
 }

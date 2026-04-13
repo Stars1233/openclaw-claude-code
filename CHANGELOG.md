@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] - 2026-04-13
+
+### Added
+- **Structured logging** — new `Logger` interface with `createConsoleLogger(prefix)` and `nullLogger`. Log level controlled via `OPENCLAW_LOG_LEVEL` env var (debug/info/warn/error). SessionManager and Council now accept optional `logger` parameter instead of using bare `console.*`
+- **`BaseOneShotSession` base class** — shared abstract class for one-shot (process-per-send) engines. Eliminates ~600 lines of duplication across Codex, Gemini, and Cursor session implementations
+- **`CircuitBreaker` class** — extracted from SessionManager into standalone module (`src/circuit-breaker.ts`) with `check()`, `recordFailure()`, `reset()`, `getStatus()` API
+- **`InboxManager` class** — extracted cross-session messaging from SessionManager into standalone module (`src/inbox-manager.ts`) with `sendTo()`, `inbox()`, `deliverInbox()`, `clear()` API
+- New exports: `BaseOneShotSession`, `OneShotEngineConfig`, `Logger`, `createConsoleLogger`, `nullLogger`, `CircuitBreaker`, `InboxManager`, `SessionLookup`
+
+### Fixed
+- **openai-compat: unsafe type assertion in `parseToolCallsFromText`** — tool call array elements are now validated at runtime before use, preventing crashes on malformed model output
+- **gemini-session / cursor-session: redundant dead branches** — merged identical error-handling branches in process close handlers
+- **Sensitive content removed** — cleaned internal service references and personal paths from code comments and documentation examples
+
+### Changed
+- `PersistentCodexSession` now extends `BaseOneShotSession` (317 → 120 lines)
+- `PersistentGeminiSession` now extends `BaseOneShotSession` (419 → 238 lines)
+- `PersistentCursorSession` now extends `BaseOneShotSession` (441 → 264 lines)
+- `SessionManager` reduced from ~1704 to ~1596 lines via CircuitBreaker and InboxManager extraction
+- All `console.log/warn/error` calls in SessionManager and Council replaced with injected `Logger`
+- `skills/SKILL.md` examples updated from CLI format to tool-call format
+
 ## [2.11.1] - 2026-04-11
 
 ### Fixed
