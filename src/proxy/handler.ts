@@ -23,12 +23,44 @@ import {
 import { injectThoughtSigs } from './thought-cache.js';
 import type { ProxyConfig } from '../types.js';
 import { resolveProvider } from '../models.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 import { FETCH_TIMEOUT_MS } from '../constants.js';
 
 /** Create an AbortSignal that fires after the given timeout */
 function fetchSignal(ms = FETCH_TIMEOUT_MS): AbortSignal {
   return AbortSignal.timeout(ms);
+}
+
+// ─── Anthropic Base URL Resolution (3-layer fallback) ────────────────────────
+// Layer 1: ANTHROPIC_BASE_URL env var (Claude Code convention)
+// Layer 2: OpenClaw global config providers[name].baseUrl (cross-platform)
+// Layer 3: Official Anthropic API fallback
+const ANTHROPIC_DEFAULT = 'https://api.anthropic.com';
+
+function getAnthropicBaseUrl(): string {
+  // Layer 1: env var (highest priority — Claude Code convention)
+  if (process.env.ANTHROPIC_BASE_URL) return process.env.ANTHROPIC_BASE_URL;
+
+  // Layer 2: OpenClaw global config (~/.openclaw/openclaw.json)
+  try {
+    const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf8');
+      const cfg = JSON.parse(raw) as { providers?: Record<string, { baseUrl?: string }> };
+      const providers = cfg?.providers ?? {};
+      // Prefer minimax-portal, otherwise first provider with a baseUrl
+      if (providers['minimax-portal']?.baseUrl) return providers['minimax-portal'].baseUrl;
+      for (const [, p] of Object.entries(providers)) {
+        if (p?.baseUrl) return p.baseUrl;
+      }
+    }
+  } catch { /* ignore — proceed to fallback */ }
+
+  // Layer 3: default
+  return ANTHROPIC_DEFAULT;
 }
 
 // ─── Retry Logic ────────────────────────────────────────────────────────────
@@ -203,8 +235,9 @@ async function forwardToAnthropic(
     signal: fetchSignal(),
   };
 
+  const baseUrl = getAnthropicBaseUrl();
   if (isStream) {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', fetchInit);
+    const resp = await fetch(`${baseUrl}/v1/messages`, fetchInit);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.flushHeaders?.();
@@ -223,7 +256,7 @@ async function forwardToAnthropic(
     }
     res.end();
   } else {
-    const resp = await fetchWithRetry('https://api.anthropic.com/v1/messages', fetchInit);
+    const resp = await fetchWithRetry(`${baseUrl}/v1/messages`, fetchInit);
     const data = await resp.json();
     res.status(resp.status).json(data);
   }
