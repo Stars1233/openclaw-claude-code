@@ -105,6 +105,22 @@ export interface OpenAIChatCompletionChunk {
  * responses from the wrong model. Originally diagnosed in PR #40 by
  * @megayounus786.
  */
+/**
+ * When set (to '1', 'true', 'yes'), the proxy preserves the pre-fix behavior:
+ *   - tools injected into every user message
+ *   - session key NOT fingerprinted by tools (same session across tool changes)
+ * Default (unset) is the new behavior: tools embedded in session system prompt
+ * at create time + session key fingerprinted by tools. The new behavior
+ * eliminates periodic latency spikes but does not support mutating the tool
+ * list within a single session (a new session is created when tools change).
+ */
+export function isToolsPerMessageModeEnabled(): boolean {
+  const v = process.env.OPENAI_COMPAT_TOOLS_PER_MESSAGE;
+  if (!v) return false;
+  const t = v.trim().toLowerCase();
+  return t === '1' || t === 'true' || t === 'yes';
+}
+
 export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: http.IncomingHttpHeaders): string {
   const headerKey = headers['x-session-id'];
   if (typeof headerKey === 'string' && headerKey.trim()) return headerKey.trim();
@@ -114,11 +130,33 @@ export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: ht
     .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
     .join('\n');
   const modelTag = (body.model || '').toString();
-  if (sys || modelTag) {
+  // Include a fingerprint of the tool list so that two requests with the same
+  // system prompt but different tool definitions land in different sessions.
+  // The tool schemas are baked into the session system prompt on create; if
+  // tools change we need a new session rather than re-using a stale one.
+  // Hash only tool names + a short description prefix to keep the fingerprint
+  // small and stable against schema formatting differences.
+  //
+  // Opt-out: OPENAI_COMPAT_TOOLS_PER_MESSAGE=1 restores the pre-fix behavior
+  // of keying sessions only by system prompt + model. Enable this if you have
+  // callers that mutate their tool list within one conversation and rely on
+  // continuing history across tool changes.
+  const toolsFingerprint = isToolsPerMessageModeEnabled()
+    ? ''
+    : (body.tools || [])
+        .map((t) => {
+          const fn = t?.function;
+          if (!fn?.name) return '';
+          const descPrefix = (typeof fn.description === 'string' ? fn.description : '').slice(0, 64);
+          return `${fn.name}:${descPrefix}`;
+        })
+        .filter(Boolean)
+        .join('|');
+  if (sys || modelTag || toolsFingerprint) {
     return (
       'sys-' +
       createHash('sha1')
-        .update(modelTag + '\n' + sys)
+        .update(modelTag + '\n' + sys + '\n' + toolsFingerprint)
         .digest('hex')
         .slice(0, 12)
     );
@@ -514,20 +552,47 @@ export async function handleChatCompletion(
     // Claude Code CLI supports --system-prompt (replace) and --append-system-prompt (append).
     // When the caller provides tools, use --system-prompt to REPLACE the CLI's entire
     // system prompt. This removes the CLI's built-in tool definitions (Bash, Read, Edit, etc.)
-    // so the model only sees the caller's tools via <available_tools> in the user message.
+    // so the model only sees the caller's tools via <available_tools>.
     // --append-system-prompt doesn't work because the CLI's own tool instructions take priority.
+    //
+    // Default path: the <available_tools> block is embedded in the SYSTEM PROMPT here at
+    // session-create time (not prepended to every user message). This keeps user messages
+    // small and stable, letting Anthropic prompt caching reliably hit the tool block and
+    // avoiding a class of latency spikes where a ~50 KB tool block was re-processed from
+    // scratch on every turn. Session key hashing already includes a tool fingerprint
+    // (see resolveSessionKey) so a tool change spawns a new session.
+    //
+    // Legacy path (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): the block is NOT embedded in the
+    // system prompt here — it is prepended to every user message in the dispatch block
+    // below. This matches the pre-fix behavior and supports mutating the tool list
+    // within a single session at the cost of re-sending ~50 KB every turn.
     if (engine === 'claude') {
       if (request.tools?.length) {
-        const noToolsPrompt =
+        const noToolsPromptInSystem =
+          'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
+          'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
+          'Do NOT attempt to call any tools or execute any commands.\n' +
+          'When you need to perform an action, use ONLY the tools defined in the <available_tools> block below, ' +
+          'and respond with <tool_calls> tags as instructed there.\n' +
+          'If no <available_tools> are provided, respond with text only.';
+        const noToolsPromptInUserMessage =
           'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
           'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
           'Do NOT attempt to call any tools or execute any commands.\n' +
           'When you need to perform an action, use ONLY the tools defined in <available_tools> tags in the user message, ' +
           'and respond with <tool_calls> tags as instructed there.\n' +
           'If no <available_tools> are provided, respond with text only.';
-        sessionConfig.systemPrompt = extracted.systemPrompt
-          ? `${noToolsPrompt}\n\n${extracted.systemPrompt}`
-          : noToolsPrompt;
+        if (isToolsPerMessageModeEnabled()) {
+          sessionConfig.systemPrompt = extracted.systemPrompt
+            ? `${noToolsPromptInUserMessage}\n\n${extracted.systemPrompt}`
+            : noToolsPromptInUserMessage;
+        } else {
+          const toolBlock = buildToolPromptBlock(request.tools);
+          const systemWithTools = `${noToolsPromptInSystem}\n\n${toolBlock}`;
+          sessionConfig.systemPrompt = extracted.systemPrompt
+            ? `${systemWithTools}\n\n${extracted.systemPrompt}`
+            : systemWithTools;
+        }
       } else if (extracted.systemPrompt) {
         sessionConfig.appendSystemPrompt = extracted.systemPrompt;
       }
@@ -568,9 +633,23 @@ export async function handleChatCompletion(
     userMessage = `<system>\n${extracted.systemPrompt}\n</system>\n\n${userMessage}`;
   }
 
-  // Inject tool definitions into the user message
+  // Inject tool definitions into the user message.
+  //
+  // Default path for Claude Code: tools are already embedded in the session
+  // system prompt (see session create block above) — do NOT re-inject them
+  // per turn. Repeatedly prepending a large <available_tools> block to every
+  // user message bloats each turn's input, defeats Anthropic prompt caching,
+  // and was the cause of periodic 30-50s latency spikes.
+  //
+  // Opt-out path for Claude Code (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): fall
+  // back to the legacy behavior of injecting the tool block into each user
+  // message. Enables dynamic tool list updates within a single session.
+  //
+  // Non-claude engines: the CLI is spawned fresh per turn with no persistent
+  // system prompt, so tools must always be injected per message.
   const hasTools = !!request.tools?.length;
-  if (hasTools) {
+  const injectToolsPerTurn = hasTools && (engine !== 'claude' || isToolsPerMessageModeEnabled());
+  if (injectToolsPerTurn) {
     const toolBlock = buildToolPromptBlock(request.tools);
     userMessage = `${toolBlock}\n\n${userMessage}`;
   }
