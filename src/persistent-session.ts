@@ -219,8 +219,9 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     if (this.options.permissionPromptTool) args.push('--permission-prompt-tool', this.options.permissionPromptTool);
 
     // Smart default: bare mode auto-enables exclude-dynamic-system-prompt-sections for better cache hits
-    const shouldExcludeDynamic = this.options.excludeDynamicSystemPromptSections === true
-      || (this.options.bare && this.options.excludeDynamicSystemPromptSections !== false);
+    const shouldExcludeDynamic =
+      this.options.excludeDynamicSystemPromptSections === true ||
+      (this.options.bare && this.options.excludeDynamicSystemPromptSections !== false);
     if (shouldExcludeDynamic) args.push('--exclude-dynamic-system-prompt-sections');
 
     if (this.options.debug) {
@@ -258,8 +259,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     if (this.options.baseUrl) spawnEnv.ANTHROPIC_BASE_URL = this.options.baseUrl;
     if (this.options.enableAgentTeams) spawnEnv.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = 'true';
     // Smart default: bare mode auto-enables 1H prompt caching
-    if (this.options.enablePromptCaching1H === true
-      || (this.options.bare && this.options.enablePromptCaching1H !== false)) {
+    if (
+      this.options.enablePromptCaching1H === true ||
+      (this.options.bare && this.options.enablePromptCaching1H !== false)
+    ) {
       spawnEnv.ENABLE_PROMPT_CACHING_1H = '1';
     }
     if (this._realModel && this.options.baseUrl) {
