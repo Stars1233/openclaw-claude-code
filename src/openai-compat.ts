@@ -121,6 +121,50 @@ export function isToolsPerMessageModeEnabled(): boolean {
   return t === '1' || t === 'true' || t === 'yes';
 }
 
+/**
+ * Generate the "no built-in tools" system prompt preamble.
+ * The `toolLocation` parameter controls how the model is told where to find
+ * tool definitions — 'system' means "in the <available_tools> block below"
+ * (tools baked into system prompt), 'user' means "in <available_tools> tags
+ * in the user message" (legacy per-turn injection).
+ */
+export function noToolsSystemPrompt(toolLocation: 'system' | 'user'): string {
+  const locationHint =
+    toolLocation === 'system'
+      ? 'in the <available_tools> block below'
+      : 'in <available_tools> tags in the user message';
+  return (
+    'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
+    'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
+    'Do NOT attempt to call any tools or execute any commands.\n' +
+    `When you need to perform an action, use ONLY the tools defined ${locationHint}, ` +
+    'and respond with <tool_calls> tags as instructed there.\n' +
+    'If no <available_tools> are provided, respond with text only.'
+  );
+}
+
+/**
+ * Build the full session system prompt for a Claude Code session with tools.
+ * Exported for testability — called from `handleChatCompletion`.
+ *
+ * - Default mode: tools are embedded in the system prompt (cacheable by Anthropic).
+ * - Legacy mode (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): tools are NOT embedded;
+ *   they'll be injected per-turn in the user message instead.
+ */
+export function buildSessionSystemPrompt(
+  tools: OpenAIChatCompletionRequest['tools'],
+  callerSystemPrompt: string | undefined,
+): string {
+  if (isToolsPerMessageModeEnabled()) {
+    const preamble = noToolsSystemPrompt('user');
+    return callerSystemPrompt ? `${preamble}\n\n${callerSystemPrompt}` : preamble;
+  }
+  const preamble = noToolsSystemPrompt('system');
+  const toolBlock = buildToolPromptBlock(tools);
+  const systemWithTools = `${preamble}\n\n${toolBlock}`;
+  return callerSystemPrompt ? `${systemWithTools}\n\n${callerSystemPrompt}` : systemWithTools;
+}
+
 export function resolveSessionKey(body: OpenAIChatCompletionRequest, headers: http.IncomingHttpHeaders): string {
   const headerKey = headers['x-session-id'];
   if (typeof headerKey === 'string' && headerKey.trim()) return headerKey.trim();
@@ -551,48 +595,11 @@ export async function handleChatCompletion(
     }
     // Claude Code CLI supports --system-prompt (replace) and --append-system-prompt (append).
     // When the caller provides tools, use --system-prompt to REPLACE the CLI's entire
-    // system prompt. This removes the CLI's built-in tool definitions (Bash, Read, Edit, etc.)
-    // so the model only sees the caller's tools via <available_tools>.
-    // --append-system-prompt doesn't work because the CLI's own tool instructions take priority.
-    //
-    // Default path: the <available_tools> block is embedded in the SYSTEM PROMPT here at
-    // session-create time (not prepended to every user message). This keeps user messages
-    // small and stable, letting Anthropic prompt caching reliably hit the tool block and
-    // avoiding a class of latency spikes where a ~50 KB tool block was re-processed from
-    // scratch on every turn. Session key hashing already includes a tool fingerprint
-    // (see resolveSessionKey) so a tool change spawns a new session.
-    //
-    // Legacy path (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1): the block is NOT embedded in the
-    // system prompt here — it is prepended to every user message in the dispatch block
-    // below. This matches the pre-fix behavior and supports mutating the tool list
-    // within a single session at the cost of re-sending ~50 KB every turn.
+    // system prompt via buildSessionSystemPrompt(). See that function's doc for details
+    // on default vs legacy (OPENAI_COMPAT_TOOLS_PER_MESSAGE=1) behavior.
     if (engine === 'claude') {
       if (request.tools?.length) {
-        const noToolsPromptInSystem =
-          'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
-          'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
-          'Do NOT attempt to call any tools or execute any commands.\n' +
-          'When you need to perform an action, use ONLY the tools defined in the <available_tools> block below, ' +
-          'and respond with <tool_calls> tags as instructed there.\n' +
-          'If no <available_tools> are provided, respond with text only.';
-        const noToolsPromptInUserMessage =
-          'You are a helpful AI assistant acting as a pure LLM behind an API proxy.\n' +
-          'You do NOT have access to any tools such as Bash, Read, Write, Edit, Glob, Grep, or any other built-in tools.\n' +
-          'Do NOT attempt to call any tools or execute any commands.\n' +
-          'When you need to perform an action, use ONLY the tools defined in <available_tools> tags in the user message, ' +
-          'and respond with <tool_calls> tags as instructed there.\n' +
-          'If no <available_tools> are provided, respond with text only.';
-        if (isToolsPerMessageModeEnabled()) {
-          sessionConfig.systemPrompt = extracted.systemPrompt
-            ? `${noToolsPromptInUserMessage}\n\n${extracted.systemPrompt}`
-            : noToolsPromptInUserMessage;
-        } else {
-          const toolBlock = buildToolPromptBlock(request.tools);
-          const systemWithTools = `${noToolsPromptInSystem}\n\n${toolBlock}`;
-          sessionConfig.systemPrompt = extracted.systemPrompt
-            ? `${systemWithTools}\n\n${extracted.systemPrompt}`
-            : systemWithTools;
-        }
+        sessionConfig.systemPrompt = buildSessionSystemPrompt(request.tools, extracted.systemPrompt);
       } else if (extracted.systemPrompt) {
         sessionConfig.appendSystemPrompt = extracted.systemPrompt;
       }
