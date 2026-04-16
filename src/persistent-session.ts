@@ -51,6 +51,8 @@ interface InternalStats {
   startTime: string | null;
   lastActivity: string | null;
   history: Array<{ time: string; type: string; event: unknown }>;
+  retries: number;
+  lastRetryError?: string;
 }
 
 // ─── PersistentClaudeSession ─────────────────────────────────────────────────
@@ -91,6 +93,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
       startTime: null,
       lastActivity: null,
       history: [],
+      retries: 0,
+      lastRetryError: undefined,
     };
   }
 
@@ -641,6 +645,8 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
             100,
         ),
       ),
+      retries: this.stats.retries,
+      lastRetryError: this.stats.lastRetryError,
       sessionId: this.sessionId,
       uptime: this.stats.startTime ? Math.round((Date.now() - new Date(this.stats.startTime).getTime()) / 1000) : 0,
     };
