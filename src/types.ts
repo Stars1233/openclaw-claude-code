@@ -204,6 +204,25 @@ export interface SessionConfig {
   noSessionPersistence?: boolean;
   betas?: string | string[];
   enableAgentTeams?: boolean;
+  // CLI 2.1.111 features
+  /** Stream hook lifecycle events (PreToolUse/PostToolUse) */
+  includeHookEvents?: boolean;
+  /** Delegate permission prompts to an MCP tool for non-interactive use */
+  permissionPromptTool?: string;
+  /** Move cwd/env/git status from system prompt to user message for better prompt cache hits */
+  excludeDynamicSystemPromptSections?: boolean;
+  /** Enable debug output for specific categories (e.g. "api", "mcp") */
+  debug?: string | string[];
+  /** Write debug output to file instead of stderr */
+  debugFile?: string;
+  /** Resume session linked to a GitHub PR number or URL */
+  fromPr?: string;
+  /** MCP channel subscriptions (research preview) */
+  channels?: string | string[];
+  /** Load development MCP channels */
+  dangerouslyLoadDevelopmentChannels?: string | string[];
+  /** Enable 1-hour prompt cache TTL (vs default 5-min) */
+  enablePromptCaching1H?: boolean;
   /** Custom engine configuration — required when engine is 'custom' */
   customEngine?: CustomEngineConfig;
 }
@@ -228,6 +247,10 @@ export interface SessionStats {
    * so this is a best-effort heuristic that may overcount on long conversations.
    */
   contextPercent: number;
+  /** Total API retry attempts during this session */
+  retries: number;
+  /** Last API retry error category (e.g. "overloaded", "rate_limit") */
+  lastRetryError?: string;
 }
 
 // ─── Hook Config ─────────────────────────────────────────────────────────────

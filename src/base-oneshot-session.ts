@@ -154,6 +154,7 @@ export abstract class BaseOneShotSession extends EventEmitter implements ISessio
       startTime: this._startTime,
       lastActivity: this._stats.lastActivity,
       contextPercent: 0,
+      retries: 0,
       sessionId: this.sessionId,
       uptime: this._startTime ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000) : 0,
     };

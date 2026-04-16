@@ -917,6 +917,7 @@ export class PersistentCustomSession extends EventEmitter implements ISession {
       contextPercent: this.engineConfig.persistent
         ? Math.min(100, Math.round(((this._stats.tokensIn + this._stats.tokensOut) / ctxWindow) * 100))
         : 0,
+      retries: 0,
       sessionId: this.sessionId,
       uptime: this._startTime ? Math.round((Date.now() - new Date(this._startTime).getTime()) / 1000) : 0,
     };

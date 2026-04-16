@@ -471,4 +471,32 @@ describe('PersistentClaudeSession', () => {
       expect(session.getEffort()).toBe('high');
     });
   });
+
+  describe('SessionConfig new fields', () => {
+    it('accepts all new CLI 2.1.111 options', () => {
+      const config: SessionConfig = {
+        name: 'test',
+        cwd: '/tmp',
+        permissionMode: 'acceptEdits',
+        includeHookEvents: true,
+        permissionPromptTool: 'mcp__auth__approve',
+        excludeDynamicSystemPromptSections: true,
+        debug: ['api', 'mcp'],
+        debugFile: '/tmp/debug.log',
+        fromPr: '123',
+        channels: ['plugin:notifier@marketplace'],
+        dangerouslyLoadDevelopmentChannels: ['server:test'],
+        enablePromptCaching1H: true,
+      };
+      expect(config.includeHookEvents).toBe(true);
+      expect(config.permissionPromptTool).toBe('mcp__auth__approve');
+      expect(config.excludeDynamicSystemPromptSections).toBe(true);
+      expect(config.debug).toEqual(['api', 'mcp']);
+      expect(config.debugFile).toBe('/tmp/debug.log');
+      expect(config.fromPr).toBe('123');
+      expect(config.channels).toEqual(['plugin:notifier@marketplace']);
+      expect(config.dangerouslyLoadDevelopmentChannels).toEqual(['server:test']);
+      expect(config.enablePromptCaching1H).toBe(true);
+    });
+  });
 });
