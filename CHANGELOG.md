@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.13.0] - 2026-04-16
+
+### Added
+- **Claude Code CLI 2.1.111 support** — updated tested version from 2.1.91 to 2.1.111
+- **Hook event streaming** — `includeHookEvents` option passes `--include-hook-events` for PreToolUse/PostToolUse lifecycle events
+- **Permission delegation** — `permissionPromptTool` option passes `--permission-prompt-tool` for non-interactive MCP-based permission handling
+- **Prompt cache optimization** — `excludeDynamicSystemPromptSections` option passes `--exclude-dynamic-system-prompt-sections` to improve prompt cache hit rate. Auto-enabled when `bare: true`
+- **1-hour prompt cache** — `enablePromptCaching1H` option sets `ENABLE_PROMPT_CACHING_1H=1` env var for 1-hour cache TTL. Auto-enabled when `bare: true`
+- **Debug control** — `debug` and `debugFile` options pass `--debug` and `--debug-file` for targeted debug output by category
+- **GitHub PR sessions** — `fromPr` option passes `--from-pr` to resume sessions linked to a pull request
+- **MCP Channels** — `channels` and `dangerouslyLoadDevelopmentChannels` options for MCP channel subscriptions (research preview)
+- **API retry tracking** — `system/api_retry` events are now parsed, with `retries` and `lastRetryError` exposed in session stats
+- **Smart defaults** — `bare: true` now auto-enables `--exclude-dynamic-system-prompt-sections` and `ENABLE_PROMPT_CACHING_1H=1` unless explicitly disabled
+
 ## [2.12.2] - 2026-04-16
 
 ### Fixed
