@@ -29,7 +29,7 @@ export const MODEL_ALIASES: Record<string, string> = getAliases();
 
 export type PermissionMode = 'acceptEdits' | 'bypassPermissions' | 'default' | 'delegate' | 'dontAsk' | 'plan' | 'auto';
 
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max' | 'auto';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
 
 // ─── Engine ─────────────────────────────────────────────────────────────────
 
@@ -223,6 +223,15 @@ export interface SessionConfig {
   dangerouslyLoadDevelopmentChannels?: string | string[];
   /** Enable 1-hour prompt cache TTL (vs default 5-min) */
   enablePromptCaching1H?: boolean;
+  // CLI 2.1.121 features
+  /** Fork subagent for non-interactive sessions (sets CLAUDE_CODE_FORK_SUBAGENT=1) */
+  forkSubagent?: boolean;
+  /** Enable Vertex AI tool search (sets ENABLE_TOOL_SEARCH=1) */
+  enableToolSearch?: boolean;
+  /** OpenTelemetry: include user prompts in logs (sets OTEL_LOG_USER_PROMPTS=1) */
+  otelLogUserPrompts?: boolean;
+  /** OpenTelemetry: include raw API request/response bodies in logs (sets OTEL_LOG_RAW_API_BODIES=1) — debug only */
+  otelLogRawApiBodies?: boolean;
   /** Custom engine configuration — required when engine is 'custom' */
   customEngine?: CustomEngineConfig;
 }
@@ -251,6 +260,8 @@ export interface SessionStats {
   retries: number;
   /** Last API retry error category (e.g. "overloaded", "rate_limit") */
   lastRetryError?: string;
+  /** Plugins that failed to load due to unmet dependencies (from system/init event, CLI 2.1.121+) */
+  pluginErrors?: Array<{ plugin: string; reason: string }>;
 }
 
 // ─── Hook Config ─────────────────────────────────────────────────────────────

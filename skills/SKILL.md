@@ -81,7 +81,7 @@ claude_session_stop({ name: "myproject" })
 | `engine` | `claude` (default), `codex`, `gemini`, `cursor` |
 | `model` | Model name or alias (`opus`, `sonnet`, `haiku`, `gpt-5.4`, `gemini-pro`, `composer-2`) |
 | `permissionMode` | `acceptEdits`, `auto`, `plan`, `bypassPermissions`, `default` |
-| `effort` | `low`, `medium`, `high`, `max`, `auto` |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `auto` (`xhigh` is Opus 4.7-only, between `high` and `max`) |
 | `maxBudgetUsd` | Cost limit in USD |
 | `allowedTools` | List of allowed tool names |
 
@@ -97,6 +97,19 @@ claude_session_stop({ name: "myproject" })
 | `debug` / `debugFile` | Targeted debug output by category (e.g. `"api,mcp"`) and optional file path. |
 | `fromPr` | Resume a session linked to a GitHub PR number or URL. |
 | `channels` / `dangerouslyLoadDevelopmentChannels` | MCP channel subscriptions (research preview). |
+
+### CLI 2.1.121 options
+
+| Parameter | Description |
+|-----------|-------------|
+| `forkSubagent` | Fork subagent for non-interactive sessions (sets `CLAUDE_CODE_FORK_SUBAGENT=1`). |
+| `enableToolSearch` | Enable Vertex AI tool search (sets `ENABLE_TOOL_SEARCH=1`). |
+| `otelLogUserPrompts` | OpenTelemetry: include user prompts in logs (sets `OTEL_LOG_USER_PROMPTS=1`). |
+| `otelLogRawApiBodies` | OpenTelemetry: include raw API bodies in logs (sets `OTEL_LOG_RAW_API_BODIES=1`). Debug only. |
+
+`stats.pluginErrors` is now populated from the `system/init` event when CLI plugins fail to load due to unmet dependencies.
+
+`TRACEPARENT` / `TRACESTATE` (W3C distributed tracing) are automatically forwarded from parent process env — set them before starting the session and they propagate to the child Claude CLI.
 
 **Smart defaults:** When `bare: true`, the plugin auto-enables `--exclude-dynamic-system-prompt-sections` and `ENABLE_PROMPT_CACHING_1H=1` unless explicitly set to `false`.
 

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.0] - 2026-04-28
+
+### Added — Claude Code CLI 2.1.121 sync
+
+Bumped the tested Claude CLI from `2.1.111` to `2.1.121`. New `SessionConfig` fields:
+
+- **`forkSubagent`** — sets `CLAUDE_CODE_FORK_SUBAGENT=1` to fork subagent for non-interactive sessions
+- **`enableToolSearch`** — sets `ENABLE_TOOL_SEARCH=1` to enable Vertex AI tool search
+- **`otelLogUserPrompts`** — sets `OTEL_LOG_USER_PROMPTS=1` for OpenTelemetry user prompt logging
+- **`otelLogRawApiBodies`** — sets `OTEL_LOG_RAW_API_BODIES=1` for OpenTelemetry raw API body logging (debug only)
+- **`xhigh` effort level** — new Opus 4.7 effort tier between `high` and `max`. Triggers `ultrathink` prefix on user messages, same as `high` and `max`
+- **`stats.pluginErrors`** — captured from `system/init` event when CLI plugins fail to load due to unmet dependencies (`{plugin, reason}[]`)
+
+Distributed tracing (`TRACEPARENT` / `TRACESTATE`) is automatically forwarded since the parent process env is inherited by the child — no new code needed, just set them in the parent before starting the session.
+
+### Notes — behavior changes from upstream Claude CLI 2.1.121
+
+- `--agent` / `--print` now enforce agent frontmatter `permissionMode`, `tools`, and `disallowedTools` (previously advisory). Affects `council` agent personas.
+- `Bash(find:*)` permission rule no longer auto-approves `find -exec` or `find -delete`. If you were relying on the previous behavior, add explicit rules.
+- `--dangerously-skip-permissions` now also skips prompts for `.claude/skills/`. Treat with care.
+
 ## [2.13.1] - 2026-04-28
 
 ### Fixed

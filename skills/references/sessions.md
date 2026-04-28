@@ -154,12 +154,20 @@ If the plugin crashes without calling `stop()`, child CLI processes (claude, cod
 
 ## Stats & Monitoring
 
-Session stats are returned by `getStats()` and surfaced through `claude_session_status`. Key fields added in plugin v2.13.0 (Claude CLI 2.1.111):
+Session stats are returned by `getStats()` and surfaced through `claude_session_status`.
+
+Fields added in plugin v2.13.0 (Claude CLI 2.1.111):
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `retries` | number | Total API retries that occurred during the session |
 | `lastRetryError` | string \| undefined | Error message from the most recent retry (if any) |
+
+Fields added in plugin v2.14.0 (Claude CLI 2.1.121):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pluginErrors` | `Array<{plugin, reason}>` \| undefined | Plugins that failed to load due to unmet dependencies, captured from the `system/init` event. `undefined` when no plugin errors occurred. |
 
 ### `system/api_retry` events
 

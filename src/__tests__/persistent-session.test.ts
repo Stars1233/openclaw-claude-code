@@ -305,6 +305,78 @@ describe('PersistentClaudeSession', () => {
       const env = (spawnCall[2] as { env: Record<string, string> }).env;
       expect(env.ENABLE_PROMPT_CACHING_1H).toBeUndefined();
     });
+
+    it('sets CLAUDE_CODE_FORK_SUBAGENT env var when forkSubagent is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ forkSubagent: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const env = (vi.mocked(spawn).mock.calls.at(-1)![2] as { env: Record<string, string> }).env;
+      expect(env.CLAUDE_CODE_FORK_SUBAGENT).toBe('1');
+    });
+
+    it('sets ENABLE_TOOL_SEARCH env var when enableToolSearch is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ enableToolSearch: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const env = (vi.mocked(spawn).mock.calls.at(-1)![2] as { env: Record<string, string> }).env;
+      expect(env.ENABLE_TOOL_SEARCH).toBe('1');
+    });
+
+    it('sets OTEL_LOG_USER_PROMPTS env var when otelLogUserPrompts is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ otelLogUserPrompts: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const env = (vi.mocked(spawn).mock.calls.at(-1)![2] as { env: Record<string, string> }).env;
+      expect(env.OTEL_LOG_USER_PROMPTS).toBe('1');
+    });
+
+    it('sets OTEL_LOG_RAW_API_BODIES env var when otelLogRawApiBodies is true', async () => {
+      session = new PersistentClaudeSession(makeConfig({ otelLogRawApiBodies: true }));
+      const { spawn } = await import('node:child_process');
+      const startPromise = session.start();
+      emitInitEvent(mockProc);
+      await startPromise;
+      const env = (vi.mocked(spawn).mock.calls.at(-1)![2] as { env: Record<string, string> }).env;
+      expect(env.OTEL_LOG_RAW_API_BODIES).toBe('1');
+    });
+
+    it('captures plugin_errors from system/init event', async () => {
+      const startPromise = session.start();
+      const initEvent = {
+        type: 'system',
+        subtype: 'init',
+        session_id: 'sess_plugin_err',
+        plugin_errors: [
+          { plugin: 'foo-plugin', reason: 'missing dependency: bar' },
+          { plugin: 'baz-plugin', reason: 'incompatible version' },
+        ],
+      } as unknown as StreamEvent;
+      mockProc.stdout.emit('data', Buffer.from(JSON.stringify(initEvent) + '\n'));
+      await startPromise;
+      expect(session.stats.pluginErrors).toEqual([
+        { plugin: 'foo-plugin', reason: 'missing dependency: bar' },
+        { plugin: 'baz-plugin', reason: 'incompatible version' },
+      ]);
+    });
+
+    it('does NOT set pluginErrors when init event has empty plugin_errors', async () => {
+      const startPromise = session.start();
+      const initEvent = {
+        type: 'system',
+        subtype: 'init',
+        session_id: 'sess_no_err',
+        plugin_errors: [],
+      } as unknown as StreamEvent;
+      mockProc.stdout.emit('data', Buffer.from(JSON.stringify(initEvent) + '\n'));
+      await startPromise;
+      expect(session.stats.pluginErrors).toBeUndefined();
+    });
   });
 
   describe('_handleEvent', () => {
