@@ -185,6 +185,8 @@ manager.councilStart('task', {
 
 Permission priority: agent-level `permissionMode` > `defaultPermissionMode` > `'bypassPermissions'`
 
+> **Note (Claude CLI 2.1.121+):** When agent personas are persisted as Claude agent files with frontmatter, the `permissionMode`, `tools`, and `disallowedTools` fields are now **enforced** by `--agent` and `--print` modes (previously advisory). If you write agent files with restrictive `tools` lists, expect those agents to refuse calls to other tools at runtime.
+
 ## System Prompt
 
 The council system prompt is loaded from `configs/council-system-prompt.md` and supports hot-editing. It includes 9 charter sections tuned through extensive multi-agent collaboration testing:

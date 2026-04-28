@@ -53,6 +53,7 @@ interface InternalStats {
   history: Array<{ time: string; type: string; event: unknown }>;
   retries: number;
   lastRetryError?: string;
+  pluginErrors?: Array<{ plugin: string; reason: string }>;
 }
 
 // ─── PersistentClaudeSession ─────────────────────────────────────────────────
@@ -265,6 +266,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
     ) {
       spawnEnv.ENABLE_PROMPT_CACHING_1H = '1';
     }
+    // CLI 2.1.121 features
+    if (this.options.forkSubagent) spawnEnv.CLAUDE_CODE_FORK_SUBAGENT = '1';
+    if (this.options.enableToolSearch) spawnEnv.ENABLE_TOOL_SEARCH = '1';
+    if (this.options.otelLogUserPrompts) spawnEnv.OTEL_LOG_USER_PROMPTS = '1';
+    if (this.options.otelLogRawApiBodies) spawnEnv.OTEL_LOG_RAW_API_BODIES = '1';
     if (this._realModel && this.options.baseUrl) {
       const base = this.options.baseUrl.replace(/\/$/, '');
       spawnEnv.ANTHROPIC_BASE_URL = `${base}/real/${this._realModel}`;
@@ -381,6 +387,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         if (event.subtype === 'init') {
           this.sessionId = event.session_id;
           this.stats.startTime = new Date().toISOString();
+          const pluginErrors = (event as Record<string, unknown>).plugin_errors;
+          if (Array.isArray(pluginErrors) && pluginErrors.length > 0) {
+            this.stats.pluginErrors = pluginErrors as Array<{ plugin: string; reason: string }>;
+          }
           this.emit(SESSION_EVENT.INIT, event);
         } else if (event.subtype === 'api_retry') {
           this.stats.retries++;
@@ -537,7 +547,7 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
 
     let finalMessage = typeof message === 'string' ? message : message;
     if (typeof finalMessage === 'string') {
-      if (options.effort === 'high' || options.effort === 'max') {
+      if (options.effort === 'high' || options.effort === 'xhigh' || options.effort === 'max') {
         finalMessage = `ultrathink\n\n${finalMessage}`;
       }
       if (options.plan) {

@@ -144,7 +144,7 @@ const plugin = {
             type: 'string',
             enum: ['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan', 'auto'],
           },
-          effort: { type: 'string', enum: ['low', 'medium', 'high', 'max', 'auto'] },
+          effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] },
           allowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to auto-approve' },
           disallowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools to deny' },
           maxTurns: { type: 'number', description: 'Max agent loop turns' },
@@ -193,6 +193,24 @@ const plugin = {
           enablePromptCaching1H: {
             type: 'boolean',
             description: 'Enable 1-hour prompt cache TTL (auto-enabled with bare)',
+          },
+          // CLI 2.1.121 features
+          forkSubagent: {
+            type: 'boolean',
+            description: 'Fork subagent for non-interactive sessions (sets CLAUDE_CODE_FORK_SUBAGENT=1)',
+          },
+          enableToolSearch: {
+            type: 'boolean',
+            description: 'Enable Vertex AI tool search (sets ENABLE_TOOL_SEARCH=1)',
+          },
+          otelLogUserPrompts: {
+            type: 'boolean',
+            description: 'OpenTelemetry: log user prompts (sets OTEL_LOG_USER_PROMPTS=1)',
+          },
+          otelLogRawApiBodies: {
+            type: 'boolean',
+            description:
+              'OpenTelemetry: log raw API request/response bodies (debug only, sets OTEL_LOG_RAW_API_BODIES=1)',
           },
           customEngine: {
             type: 'object',
@@ -270,7 +288,11 @@ const plugin = {
         properties: {
           name: { type: 'string', description: 'Session name' },
           message: { type: 'string', description: 'Message to send' },
-          effort: { type: 'string', enum: ['low', 'medium', 'high', 'max'], description: 'Effort for this message' },
+          effort: {
+            type: 'string',
+            enum: ['low', 'medium', 'high', 'xhigh', 'max'],
+            description: 'Effort for this message',
+          },
           plan: { type: 'boolean', description: 'Enable plan mode' },
           timeout: { type: 'number', description: 'Timeout in ms (default 300000)' },
           stream: {

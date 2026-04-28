@@ -241,7 +241,7 @@ All engines are tested and verified in each release:
 
 | Engine | CLI | Tested Version | Invocation | Status |
 |--------|-----|---------------|------------|--------|
-| Claude Code | `claude` | 2.1.111 | Persistent subprocess, stream-json | **Fully supported** |
+| Claude Code | `claude` | 2.1.121 | Persistent subprocess, stream-json | **Fully supported** |
 | OpenAI Codex | `codex` | 0.118.0 | `codex exec --full-auto`, per-message | **Fully supported** |
 | Google Gemini | `gemini` | 0.36.0 | `gemini -p --output-format stream-json`, per-message | **Fully supported** |
 | Cursor Agent | `agent` | 2026.03.30 | `agent -p --force --output-format stream-json`, per-message | **Fully supported** |
