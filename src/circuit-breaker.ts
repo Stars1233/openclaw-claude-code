@@ -10,6 +10,7 @@ import {
   CIRCUIT_BREAKER_THRESHOLD,
   CIRCUIT_BREAKER_BACKOFF_BASE_MS,
   CIRCUIT_BREAKER_MAX_BACKOFF_MS,
+  CIRCUIT_BREAKER_MAX_COUNT,
 } from './constants.js';
 
 interface BreakerState {
@@ -38,7 +39,9 @@ export class CircuitBreaker {
   /** Record a failure — increments count and sets exponential backoff. */
   recordFailure(engine: string): void {
     const existing = this.breakers.get(engine) || { count: 0, lastFailure: 0, backoffUntil: 0 };
-    existing.count++;
+    // Cap count to keep error messages / health() output bounded.
+    // Backoff itself is already bounded by CIRCUIT_BREAKER_MAX_BACKOFF_MS below.
+    existing.count = Math.min(existing.count + 1, CIRCUIT_BREAKER_MAX_COUNT);
     existing.lastFailure = Date.now();
     const backoff = Math.min(
       CIRCUIT_BREAKER_BACKOFF_BASE_MS * Math.pow(2, existing.count - 1),
