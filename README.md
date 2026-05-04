@@ -9,6 +9,8 @@ Run Claude Code, Codex and other coding agents in one unified runtime.
 Claw Orchestrator turns interactive coding CLIs into programmable, headless agent engines. Start persistent sessions, route tasks across different coding agents, coordinate multi-agent councils, and expose everything through a clean tool-based API.
 
 > Claude Code, Codex, Gemini, Cursor Agent, or your own custom CLI — orchestrated as one runtime.
+>
+> **Runs standalone, with first-class OpenClaw plugin support and a path to other claw-style agent platforms.**
 
 [![npm version](https://img.shields.io/npm/v/@enderfga/claw-orchestrator.svg)](https://www.npmjs.com/package/@enderfga/claw-orchestrator)
 [![CI](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml)
@@ -25,7 +27,7 @@ That works well when a human is sitting in front of a terminal. It breaks down w
 - keep long-running coding sessions alive
 - switch between Claude Code, Codex, Gemini, Cursor Agent, or custom CLIs
 - collaborate as a team on the same codebase
-- expose coding capabilities to OpenClaw, MCP, bots, dashboards, or other agent systems
+- integrate coding capabilities into OpenClaw first, and other claw-style agent systems over time
 - manage context, tools, worktrees, and execution state programmatically
 
 Claw Orchestrator is the control layer for that.
