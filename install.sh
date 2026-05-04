@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# One-line installer for openclaw-claude-code
-# Usage: curl -fsSL https://raw.githubusercontent.com/Enderfga/openclaw-claude-code/main/install.sh | bash
+# One-line installer for Claw Orchestrator
+# Usage: curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/install.sh | bash
 set -euo pipefail
 
-NPM_PACKAGE="@enderfga/openclaw-claude-code"
+NPM_PACKAGE="@enderfga/claw-orchestrator"
+LEGACY_PACKAGE="@enderfga/openclaw-claude-code"
+LEGACY_PLUGIN_ID="openclaw-claude-code"
 CONFIG_FILE="${HOME}/.openclaw/openclaw.json"
 
 info()  { printf '\033[1;34m→\033[0m %s\n' "$*"; }
@@ -53,7 +55,7 @@ for p in paths:
         already = True
         break
     # Also match if an existing path ends with the package name
-    if p.endswith('/openclaw-claude-code'):
+    if p.endswith('/openclaw-claude-code') or p.endswith('/claw-orchestrator'):
         print(f'Replacing existing path: {p}')
         paths[paths.index(p)] = pkg_path
         already = True
@@ -87,12 +89,12 @@ fi
 # ── Step 4: Verify ───────────────────────────────────────
 sleep 2
 info "Verifying..."
-if openclaw plugins list 2>/dev/null | grep -q "claude-code"; then
-    ok "openclaw-claude-code is loaded and ready!"
+if openclaw plugins list 2>/dev/null | grep -qE "claw-orchestrator|claude-code"; then
+    ok "Claw Orchestrator is loaded and ready!"
 else
     warn "Plugin may need a moment to load. Check with: openclaw plugins list"
 fi
 
 echo ""
-ok "Done! You now have claude_session_start, council_start, and 20+ coding agent tools."
-echo "  Docs: https://github.com/Enderfga/openclaw-claude-code"
+ok "Done! You now have session_start, council_start, and 30+ coding-agent tools."
+echo "  Docs: https://github.com/Enderfga/claw-orchestrator"
