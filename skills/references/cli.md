@@ -169,16 +169,16 @@ The following tools are available through the OpenClaw plugin SDK and TypeScript
 
 | Tool | Description |
 |------|-------------|
-| `claude_sessions_overview` | Aggregate dashboard of all active sessions |
-| `claude_session_update_tools` | Hot-swap allowed/disallowed tools via `--resume` |
-| `claude_session_switch_model` | Switch model mid-session via `--resume` |
+| `sessions_overview` | Aggregate dashboard of all active sessions |
+| `session_update_tools` | Hot-swap allowed/disallowed tools via `--resume` |
+| `session_switch_model` | Switch model mid-session via `--resume` |
 | `council_start` | Start multi-agent council with worktree isolation |
 | `council_status` | Poll council progress and agent responses |
 | `council_abort` | Abort a running council |
 | `council_inject` | Inject a message into the next council round |
-| `claude_session_send_to` | Cross-session messaging (immediate or queued) |
-| `claude_session_inbox` | Read inbox messages for a session |
-| `claude_session_deliver_inbox` | Deliver queued messages to an idle session |
+| `session_send_to` | Cross-session messaging (immediate or queued) |
+| `session_inbox` | Read inbox messages for a session |
+| `session_deliver_inbox` | Deliver queued messages to an idle session |
 | `ultraplan_start` | Start background Opus planning session |
 | `ultraplan_status` | Poll ultraplan progress |
 | `ultrareview_start` | Start fleet of parallel reviewer agents |
