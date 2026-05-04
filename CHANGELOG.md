@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-05-04
+
+### Removed — Hard Brand Cleanup
+
+- Removed the `claude-code-skill` CLI alias; `clawo` is now the only package binary.
+- Removed the deprecated `claude_*` tool aliases from plugin registration and `openclaw.plugin.json` contracts.
+- Removed the `skills/claude-code-skill/` back-compat symlink.
+- Removed install-time migration fallback code for the old `openclaw-claude-code` plugin id and package path.
+- Removed old-name references from current docs, help text, examples, skill text, comments, package metadata, and proxy identifiers outside explicit migration/history material.
+- Renamed the plugin proxy route from `/v1/claude-code-proxy` to `/v1/claw-orchestrator-proxy`.
+- Replaced the CLI base URL override env var `CLAUDE_CODE_API_URL` with `CLAWO_API_URL`.
+
+### Changed
+
+- Bumped the package version to `3.1.0`.
+- Updated tests to assert that only engine-neutral tool names are registered.
+
 ## [3.0.0] - 2026-05-04
 
 ### Brand Rebrand

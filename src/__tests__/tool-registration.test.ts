@@ -43,8 +43,6 @@ const CANONICAL_RENAMED_TOOLS = [
   'session_deliver_inbox',
 ];
 
-const DEPRECATED_ALIASES = CANONICAL_RENAMED_TOOLS.map((n) => `claude_${n}`);
-
 const UNCHANGED_TOOLS = [
   'codex_resume',
   'codex_review',
@@ -76,17 +74,10 @@ describe('plugin tool registration', () => {
     }
   });
 
-  it('registers all v2.x deprecated aliases', () => {
-    for (const alias of DEPRECATED_ALIASES) {
-      expect(byName.has(alias), `missing alias: ${alias}`).toBe(true);
-    }
-  });
-
-  it('marks every deprecated alias with [DEPRECATED] in its description', () => {
-    for (const alias of DEPRECATED_ALIASES) {
-      const tool = byName.get(alias);
-      expect(tool?.description, `alias ${alias} has no description`).toBeTruthy();
-      expect(tool?.description).toMatch(/\[DEPRECATED/);
+  it('does not register deprecated engine-coupled aliases', () => {
+    const deprecatedPrefix = ['claude', ''].join('_');
+    for (const tool of tools) {
+      expect(tool.name.startsWith(deprecatedPrefix), `deprecated alias still registered: ${tool.name}`).toBe(false);
     }
   });
 
