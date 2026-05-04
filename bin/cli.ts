@@ -12,7 +12,7 @@ import { Command } from 'commander';
 import { createRequire } from 'node:module';
 
 function getBaseUrl(): string {
-  return process.env.CLAWO_API_URL || 'http://127.0.0.1:18796';
+  return process.env.CLAWO_API_URL || process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
 }
 
 function getCliVersion(): string {

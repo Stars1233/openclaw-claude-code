@@ -6,9 +6,14 @@ interface RegisteredTool {
   description: string;
 }
 
-function collectRegisteredTools(): RegisteredTool[] {
+interface RegisteredRoute {
+  path: string;
+}
+
+function collectRegistration(): { tools: RegisteredTool[]; routes: RegisteredRoute[] } {
   const tools: RegisteredTool[] = [];
-  // Minimal stub PluginAPI — just enough to capture registerTool calls.
+  const routes: RegisteredRoute[] = [];
+  // Minimal stub PluginAPI — just enough to capture registration calls.
   const fakeApi = {
     pluginConfig: {},
     logger: { info: () => {}, error: () => {}, warn: () => {} },
@@ -16,11 +21,13 @@ function collectRegisteredTools(): RegisteredTool[] {
       tools.push({ name: def.name, description: def.description });
     },
     on: () => {},
-    registerHttpRoute: () => {},
+    registerHttpRoute: (def: { path: string }) => {
+      routes.push({ path: def.path });
+    },
     registerService: () => {},
   };
   (plugin as unknown as { register: (api: unknown) => void }).register(fakeApi);
-  return tools;
+  return { tools, routes };
 }
 
 const CANONICAL_RENAMED_TOOLS = [
@@ -65,8 +72,9 @@ const UNCHANGED_TOOLS = [
 ];
 
 describe('plugin tool registration', () => {
-  const tools = collectRegisteredTools();
+  const { tools, routes } = collectRegistration();
   const byName = new Map(tools.map((t) => [t.name, t]));
+  const routePaths = new Set(routes.map((r) => r.path));
 
   it('registers all canonical engine-neutral tool names', () => {
     for (const name of CANONICAL_RENAMED_TOOLS) {
@@ -75,9 +83,9 @@ describe('plugin tool registration', () => {
   });
 
   it('does not register deprecated engine-coupled aliases', () => {
-    const deprecatedPrefix = ['claude', ''].join('_');
+    // v3.0 aliases (claude_session_*, claude_team_*, etc.) were removed in v3.1.
     for (const tool of tools) {
-      expect(tool.name.startsWith(deprecatedPrefix), `deprecated alias still registered: ${tool.name}`).toBe(false);
+      expect(tool.name.startsWith('claude_'), `deprecated alias still registered: ${tool.name}`).toBe(false);
     }
   });
 
@@ -85,5 +93,10 @@ describe('plugin tool registration', () => {
     for (const name of UNCHANGED_TOOLS) {
       expect(byName.has(name), `missing unchanged tool: ${name}`).toBe(true);
     }
+  });
+
+  it('keeps the legacy proxy route as a compatibility alias', () => {
+    expect(routePaths.has('/v1/claw-orchestrator-proxy')).toBe(true);
+    expect(routePaths.has('/v1/claude-code-proxy')).toBe(true);
   });
 });

@@ -4,6 +4,7 @@
 set -euo pipefail
 
 NPM_PACKAGE="@enderfga/claw-orchestrator"
+LEGACY_PLUGIN_ID="openclaw-claude-code"
 CONFIG_FILE="${HOME}/.openclaw/openclaw.json"
 
 info()  { printf '\033[1;34m→\033[0m %s\n' "$*"; }
@@ -46,6 +47,17 @@ load = plugins.setdefault('load', {})
 paths = load.setdefault('paths', [])
 
 pkg_path = '${PKG_PATH}'
+legacy_plugin_id = '${LEGACY_PLUGIN_ID}'
+
+# Direct v2.x -> v3.1 upgrades can still have stale legacy load paths.
+# Keep this idempotent cleanup even after the v3.0 compatibility aliases are gone.
+new_paths = []
+for p in paths:
+    if p.endswith(f'/{legacy_plugin_id}'):
+        print(f'Removing stale v2.x load path: {p}')
+        continue
+    new_paths.append(p)
+paths[:] = new_paths
 
 # Check if already registered (exact match or different path to same package)
 already = False
@@ -62,6 +74,12 @@ for p in paths:
 
 if not already:
     paths.append(pkg_path)
+
+# Remove stale entries.openclaw-claude-code if present (doesn't work without load.paths)
+entries = plugins.get('entries', {})
+if legacy_plugin_id in entries:
+    del entries[legacy_plugin_id]
+    print(f'Removed stale plugins.entries.{legacy_plugin_id}')
 
 with open('${CONFIG_FILE}', 'w') as f:
     json.dump(cfg, f, indent=2)
