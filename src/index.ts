@@ -115,12 +115,14 @@ const plugin = {
         gatewayUrl: process.env.GATEWAY_URL,
         gatewayKey: process.env.GATEWAY_KEY,
       });
-      api.registerHttpRoute({
-        path: '/v1/claw-orchestrator-proxy',
-        auth: 'gateway',
-        match: 'prefix',
-        handler: proxyHandler as (...args: unknown[]) => Promise<boolean>,
-      });
+      for (const path of ['/v1/claw-orchestrator-proxy', '/v1/claude-code-proxy']) {
+        api.registerHttpRoute({
+          path,
+          auth: 'gateway',
+          match: 'prefix',
+          handler: proxyHandler as (...args: unknown[]) => Promise<boolean>,
+        });
+      }
     }
 
     // ─── Tool: session_start ──────────────────────────────────────────────
