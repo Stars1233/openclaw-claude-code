@@ -30,3 +30,7 @@ yarn-error.log*
 coverage/
 .claude/worktrees/
 .worktrees/
+
+# All documentation lives under skills/. The repo is consumed by AI agents
+# that look there; docs/ is for local process scratch only and never shipped.
+docs/
