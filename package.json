@@ -40,18 +40,26 @@
     "node": ">=22.0.0"
   },
   "keywords": [
+    "claw",
+    "openclaw",
     "claw-orchestrator",
-    "coding-agent",
-    "agent-orchestration",
     "claude-code",
     "codex",
     "gemini",
     "cursor",
-    "multi-agent",
+    "cursor-agent",
+    "coding-agent",
+    "ai-agent",
+    "agent-orchestration",
     "agent-council",
+    "multi-agent",
+    "multi-engine",
+    "persistent-sessions",
     "session-management",
-    "openclaw",
-    "mcp"
+    "tool-orchestration",
+    "mcp",
+    "cli",
+    "typescript"
   ],
   "author": "enderfga",
   "repository": {
