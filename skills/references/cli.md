@@ -1,11 +1,13 @@
 # CLI Reference
 
-The CLI is an HTTP client that talks to the embedded server. In plugin mode, the server auto-starts. In standalone mode, run `claude-code-skill serve` first.
+The CLI is an HTTP client that talks to the Claw Orchestrator embedded server. In plugin mode, the server auto-starts. In standalone mode, run `clawo serve` first.
+
+> **v2.x → v3.0:** The binary was renamed from `claude-code-skill` to `clawo`. The old binary is still installed as an alias for the duration of v3.0.x and will be removed in v3.1. Update scripts to use `clawo` before upgrading.
 
 ## Server
 
 ```bash
-claude-code-skill serve [-p, --port <port>]
+clawo serve [-p, --port <port>]
 ```
 
 Start standalone embedded server (default port 18796). Set `CLAUDE_CODE_API_URL` to override the base URL.
@@ -54,7 +56,7 @@ The server exposes an OpenAI-compatible chat completions endpoint, enabling any 
 ### session-start
 
 ```bash
-claude-code-skill session-start [name] [options]
+clawo session-start [name] [options]
 ```
 
 | Flag | Description |
@@ -93,7 +95,7 @@ claude-code-skill session-start [name] [options]
 ### session-send
 
 ```bash
-claude-code-skill session-send <name> <message> [options]
+clawo session-send <name> <message> [options]
 ```
 
 | Flag | Description |
@@ -106,59 +108,59 @@ claude-code-skill session-send <name> <message> [options]
 ### session-stop
 
 ```bash
-claude-code-skill session-stop <name>
+clawo session-stop <name>
 ```
 
 ### session-list
 
 ```bash
-claude-code-skill session-list
+clawo session-list
 ```
 
 ### session-status
 
 ```bash
-claude-code-skill session-status <name>
+clawo session-status <name>
 ```
 
 ### session-grep
 
 ```bash
-claude-code-skill session-grep <name> <pattern> [-n, --limit <n>]
+clawo session-grep <name> <pattern> [-n, --limit <n>]
 ```
 
 ### session-compact
 
 ```bash
-claude-code-skill session-compact <name> [--summary <text>]
+clawo session-compact <name> [--summary <text>]
 ```
 
 ## Agent Management
 
 ```bash
-claude-code-skill agents-list [-d, --cwd <dir>]
-claude-code-skill agents-create <name> [--description <desc>] [--prompt <prompt>]
+clawo agents-list [-d, --cwd <dir>]
+clawo agents-create <name> [--description <desc>] [--prompt <prompt>]
 ```
 
 ## Skills Management
 
 ```bash
-claude-code-skill skills-list [-d, --cwd <dir>]
-claude-code-skill skills-create <name> [--description <desc>] [--prompt <prompt>] [--trigger <t>]
+clawo skills-list [-d, --cwd <dir>]
+clawo skills-create <name> [--description <desc>] [--prompt <prompt>] [--trigger <t>]
 ```
 
 ## Rules Management
 
 ```bash
-claude-code-skill rules-list [-d, --cwd <dir>]
-claude-code-skill rules-create <name> [--description <desc>] [--content <text>] [--paths <glob>] [--condition <expr>]
+clawo rules-list [-d, --cwd <dir>]
+clawo rules-create <name> [--description <desc>] [--content <text>] [--paths <glob>] [--condition <expr>]
 ```
 
 ## Agent Teams
 
 ```bash
-claude-code-skill session-team-list <name>
-claude-code-skill session-team-send <name> <teammate> <message>
+clawo session-team-list <name>
+clawo session-team-send <name> <teammate> <message>
 ```
 
 ## SDK-Only Tools (No CLI Wrapper)
