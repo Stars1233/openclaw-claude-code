@@ -4,6 +4,7 @@
 set -euo pipefail
 
 NPM_PACKAGE="@enderfga/claw-orchestrator"
+LEGACY_PACKAGE="@enderfga/openclaw-claude-code"
 LEGACY_PLUGIN_ID="openclaw-claude-code"
 CONFIG_FILE="${HOME}/.openclaw/openclaw.json"
 
@@ -18,6 +19,16 @@ command -v openclaw >/dev/null 2>&1 || fail "openclaw not found. Install OpenCla
 
 # ── Step 1: npm global install ───────────────────────────
 info "Installing ${NPM_PACKAGE} via npm..."
+
+# Symmetric to the openclaw.json cleanup below: a direct v2.x -> v3.1 upgrade
+# may still have the deprecated package globally installed. We don't auto-
+# uninstall (the operator may have scripts pinned to the old name during a
+# migration window); just surface the deprecation and the one-liner to clean
+# it up at their convenience.
+if npm ls -g --depth=0 --json 2>/dev/null | grep -q "\"${LEGACY_PACKAGE}\""; then
+    warn "${LEGACY_PACKAGE} is still installed globally. After this script finishes, run:"
+    warn "    npm uninstall -g ${LEGACY_PACKAGE}"
+fi
 
 npm install -g "${NPM_PACKAGE}" --silent 2>&1 | tail -1
 
