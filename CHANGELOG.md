@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — `engine: 'opencode'` for [sst/opencode](https://github.com/sst/opencode)
+
+New first-class engine wrapper alongside Claude / Codex / Gemini / Cursor. Wraps `opencode run --format json --dangerously-skip-permissions` as a one-shot per `send()`.
+
+- Parses opencode's NDJSON envelope (`{ type, timestamp, sessionID, ...data }`) with `text`, `reasoning`, `tool_use`, `step_start`, `step_finish`, `error` event types
+- `text` and `tool_use` are cumulative snapshots keyed by `part.id` / `part.callID`; the parser diffs them so `onText` callbacks receive streaming deltas and tool-call counts only increment on first sight
+- Real token usage from `step_finish.part.tokens.{input, output, cache.read}` (falls back to estimation if no `step_finish` arrives)
+- `--model` is passed through only when the configured model contains a `/` (opencode's `provider/model` convention); otherwise opencode's default applies
+- Wrapper closes child stdin immediately after spawn (opencode otherwise blocks waiting for EOF and the subprocess hangs)
+- Auth: opencode reads either its own credential store (`opencode auth login`) **or** the standard provider env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, …); the wrapper passes through the parent process env unchanged
+- New env var `OPENCODE_BIN` to override the binary path (defaults to `opencode`)
+- 17 unit tests covering the parser; verified end-to-end against opencode CLI **1.1.40** with both a plain text send (`say hi`) and a tool-calling send (`create hello.txt`)
+
+Schema is undocumented upstream and the project releases nearly daily — pin a version in CI if you depend on field names.
+
 ## [3.2.0] - 2026-05-06
 
 ### Fixed
