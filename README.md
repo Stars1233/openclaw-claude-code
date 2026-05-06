@@ -92,9 +92,9 @@ await manager.councilStart("Design and implement an auth system", {
 Expose coding sessions as tools so other agents and systems can control them. The runtime registers 35 tools, including:
 
 ```txt
-session_start         session_send         session_status
+session_start         session_send         coding_session_status
 session_grep          session_compact      session_inbox
-team_send             team_list            agents_list
+team_send             team_list            coding_agents_list
 council_start         council_review       council_accept
 ultraplan_start       ultrareview_start
 ```
