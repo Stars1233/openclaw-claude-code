@@ -377,7 +377,7 @@ const plugin = {
     api.registerTool({
       name: 'sessions_overview',
       description:
-        'Get an aggregate overview of all active coding sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use session_status instead.',
+        'Get an aggregate overview of all active coding sessions — readiness, busy/paused state, cost, context usage, and last activity for each. Use this for a dashboard view across all sessions. For single-session detail, use coding_session_status instead.',
       parameters: { type: 'object', properties: {} },
       execute: async (_id) => {
         if (!manager)
@@ -393,10 +393,10 @@ const plugin = {
       },
     });
 
-    // ─── Tool: session_status ─────────────────────────────────────────────
+    // ─── Tool: coding_session_status ──────────────────────────────────────
 
     api.registerTool({
-      name: 'session_status',
+      name: 'coding_session_status',
       description: 'Get detailed status of a coding session (context %, tokens, cost, uptime)',
       parameters: {
         type: 'object',
@@ -453,10 +453,10 @@ const plugin = {
       },
     });
 
-    // ─── Tool: agents_list ────────────────────────────────────────────────
+    // ─── Tool: coding_agents_list ─────────────────────────────────────────
 
     api.registerTool({
-      name: 'agents_list',
+      name: 'coding_agents_list',
       description: 'List agent definitions from .claude/agents/',
       parameters: {
         type: 'object',

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-05-06
+
+### Fixed
+
+- **#57 — `dist/index.js` missing.** OpenClaw's plugin loader resolves entry points by convention (`./dist/index.js`) rather than reading `package.json#main`, so v3.1.0 installs emitted a load-time warning. Added a `postbuild` step that writes `dist/index.js` and `dist/index.d.ts` shims re-exporting from `dist/src/index.js`. `package.json#main` is unchanged.
+
+### Changed — Tool name collisions with OpenClaw built-ins (#58)
+
+OpenClaw 2026.5.x ships its own `session_status` and `agents_list` tools at the gateway level. The plugin's identically-named tools triggered `plugin tool name conflict` warnings on every gateway restart, and dispatch was ambiguous when an LLM called either name. Renamed the two colliding tools:
+
+| Before | After |
+|--------|-------|
+| `session_status` | `coding_session_status` |
+| `agents_list` | `coding_agents_list` |
+
+No aliases — the conflicting names couldn't be invoked reliably anyway. All other tool names (and the rest of the API surface) are unchanged. If you have callers that hard-coded these two names, update them.
+
 ## [3.1.0] - 2026-05-04
 
 ### Breaking — Hard Brand Cleanup
