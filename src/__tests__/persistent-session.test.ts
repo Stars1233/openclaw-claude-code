@@ -588,11 +588,11 @@ describe('PersistentClaudeSession', () => {
       expect(payload.message.content[0].text).toContain('ultrathink');
     });
 
-    it('prepends /plan for plan mode', async () => {
+    it('prepends planning instruction for plan mode', async () => {
       await session.send('test', { plan: true });
       const written = mockProc.stdin.write.mock.calls.at(-1)![0] as string;
       const payload = JSON.parse(written.trim());
-      expect(payload.message.content[0].text).toMatch(/^\/plan /);
+      expect(payload.message.content[0].text).toMatch(/^\[Planning Mode\]/);
     });
 
     it('returns requestId when not waiting', async () => {
