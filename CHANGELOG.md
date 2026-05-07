@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2026-05-07
+
+### Fixed
+
+- **#60 — `/plan` isn't available in this environment.** The `plan: true` option in `sendMessage` previously prepended `/plan` to the message, which is a Claude Code interactive-only slash command not available in `--stream-json` mode or any other engine. Replaced with a universally compatible instruction-based planning prefix (`[Planning Mode] ...`) in both `persistent-session.ts` and `persistent-custom-session.ts`. Tested across Claude Code, Codex, and Gemini.
+
 ## [3.3.0] - 2026-05-06
 
 ### Added — `engine: 'opencode'` for [sst/opencode](https://github.com/sst/opencode)
