@@ -372,7 +372,9 @@ export class PersistentCustomSession extends EventEmitter implements ISession {
         finalMessage = `ultrathink\n\n${finalMessage}`;
       }
       if (options.plan) {
-        finalMessage = `/plan ${finalMessage}`;
+        // Custom engines don't support Claude Code's /plan slash command.
+        // Use an instruction-based planning prefix instead.
+        finalMessage = `[Planning Mode] Analyze the request and create a detailed plan only. Do not write code or make changes yet.\n\n${finalMessage}`;
       }
     }
 

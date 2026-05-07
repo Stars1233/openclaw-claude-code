@@ -553,7 +553,10 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         finalMessage = `ultrathink\n\n${finalMessage}`;
       }
       if (options.plan) {
-        finalMessage = `/plan ${finalMessage}`;
+        // /plan slash command is unreliable across Claude Code versions and environments.
+        // Instruction-based planning is universally compatible; actual plan permission
+        // mode is controlled by --permission-mode plan at session start.
+        finalMessage = `[Planning Mode] Analyze the request and create a detailed plan only. Do not write code or make changes yet.\n\n${finalMessage}`;
       }
     }
 
