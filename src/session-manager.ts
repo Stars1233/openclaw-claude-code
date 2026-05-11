@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
+import RE2 from 're2';
 
 const _require = createRequire(import.meta.url);
 function getPluginVersion(): string {
@@ -469,7 +470,7 @@ export class SessionManager {
   ): Promise<Array<{ time: string; type: string; content: string }>> {
     const managed = this._getSession(name);
     const history = managed.session.getHistory(GREP_HISTORY_FETCH);
-    const regex = new RegExp(pattern, 'i');
+    const regex = new RE2(pattern, 'i');
     return history
       .filter((ev) => regex.test(JSON.stringify(ev)))
       .slice(0, limit)

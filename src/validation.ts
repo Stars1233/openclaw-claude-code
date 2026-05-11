@@ -9,6 +9,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import RE2 from 're2';
 
 // ─── Blocked Path Prefixes ─────────────────────────────────────────────────
 
@@ -85,15 +86,15 @@ export function sanitizeCwd(cwd: string | undefined): string | undefined {
 // ─── validateRegex ──────────────────────────────────────────────────────────
 
 /**
- * Validate that a string is a syntactically valid regular expression.
+ * Compile a user-supplied pattern into an RE2 regex.
  *
- * Returns the compiled RegExp if valid, throws on invalid syntax.
- * Note: this validates syntax only — it does not detect catastrophic
- * backtracking (ReDoS) patterns.
+ * RE2 runs in linear time and never backtracks, so it is immune to ReDoS
+ * patterns like `(a+)+$`. Some PCRE features (lookbehind, backreferences)
+ * are not supported and will throw at compile time.
  */
 export function validateRegex(pattern: string): RegExp {
   try {
-    return new RegExp(pattern, 'i');
+    return new RE2(pattern, 'i');
   } catch (err) {
     throw new Error(`Invalid regex pattern: ${(err as Error).message}`);
   }

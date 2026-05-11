@@ -106,9 +106,9 @@ describe('sanitizeCwd', () => {
 // ─── validateRegex ──────────────────────────────────────────────────────────
 
 describe('validateRegex', () => {
-  it('returns RegExp for valid pattern', () => {
+  it('returns a regex-like object for valid pattern', () => {
     const result = validateRegex('hello');
-    expect(result).toBeInstanceOf(RegExp);
+    expect(typeof result.test).toBe('function');
     expect(result.test('HELLO')).toBe(true); // case insensitive
   });
 
@@ -128,6 +128,16 @@ describe('validateRegex', () => {
 
   it('throws for unbalanced parentheses', () => {
     expect(() => validateRegex('(abc')).toThrow('Invalid regex pattern');
+  });
+
+  it('runs catastrophic-backtracking patterns in linear time (no ReDoS)', () => {
+    // (a+)+$ against 'a'*30 + '!' would hang a backtracking engine for seconds.
+    // RE2 evaluates this in microseconds.
+    const regex = validateRegex('(a+)+$');
+    const input = 'a'.repeat(30) + '!';
+    const start = Date.now();
+    expect(regex.test(input)).toBe(false);
+    expect(Date.now() - start).toBeLessThan(100);
   });
 });
 

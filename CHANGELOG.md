@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] - 2026-05-11
+
+### Fixed
+
+- `/session/grep` and the `session-grep` tool now compile user-supplied patterns
+  with [RE2](https://github.com/uhop/node-re2) instead of the V8 regex engine.
+  RE2 evaluates regexes in linear time and never backtracks, so patterns like
+  `(a+)+$` that previously could block the Node event loop now complete in
+  microseconds. Closes #64. Thanks to @ybdesire for the report.
+- Note: RE2 does not support a handful of PCRE-only features (lookbehind,
+  backreferences). Patterns using those features will be rejected at compile
+  time with an `Invalid regex pattern` error.
+
 ## [3.7.0] - 2026-05-11
 
 ### Added — Model Context Protocol (MCP) server
