@@ -5,14 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.5.4] - 2026-05-10
+## [3.5.5] - 2026-05-11
+
+### Added — three-agent autoloop architecture
+
+The previous autoloop (single-threaded phase machine that respawned a fresh
+Claude session per phase) is replaced with three persistent agents:
+
+- **Planner** (Opus, your chat interface) — long-lived; owns strategy,
+  writes `plan.md` / `goal.json`, decides when to push you out-of-band.
+- **Coder** (Sonnet) — receives directive, applies change, runs the
+  evaluator, emits structured `iter_complete`.
+- **Reviewer** (Sonnet, sandboxed cwd) — distrustful audit; advance /
+  hold / rollback per iter.
+
+Plugin tools: `autoloop_start`, `autoloop_chat`, `autoloop_status`,
+`autoloop_list`, `autoloop_stop`, `autoloop_reset_agent`. The Planner
+controls the run via fenced ` ```autoloop ` JSON blocks (`notify_user`,
+`spawn_subagents`, `send_directive`, `pause_loop`, `resume_loop`,
+`terminate`, `update_push_policy`, `write_plan_committed`,
+`write_goal_committed`).
+
+Push policy: silent on iter-done-ok; pushes on `target_hit`, 2-iter
+regression, 2-iter reviewer reject, phase error, 30-min stall, or
+decision-needed. 5-min dedup on (level, summary). Channels are configured
+via env vars (`AUTOLOOP_WECHAT_RECIPIENT`, `AUTOLOOP_WECHAT_ACCOUNT`,
+`AUTOLOOP_WHATSAPP_RECIPIENT`); an unset channel is silently skipped and
+the fallback chain moves to the next tier (email via push-api-skill is
+the final tier).
+
+Auto-compact: per-agent thresholds (Planner 80%, Coder/Reviewer 70%) on
+`getStats().contextPercent`; `/compact` dispatched with a role-specific
+preservation hint; 30 s cooldown; surfaces as a `compact` SSE event.
+
+### Added — embedded dashboard
+
+Single-page vanilla dashboard at `GET /dashboard`. Two tabs:
+
+- **Autoloop**: list of runs in left rail; click into one for a 3-pane
+  view (Planner ⇄ user + chat composer / Coder activity / Reviewer
+  verdicts). Top bar shows iter/status/push count; bottom strip shows
+  recent pushes.
+- **Council**: list of council sessions + live agent-response stream
+  with round-by-round verdicts and consensus marker.
+
+Backend HTTP/SSE: `GET /autoloop/list`, `/autoloop/<id>/state`,
+`/autoloop/<id>/push_log`, `/autoloop/<id>/events`, and the same shape
+for `/council/{list,<id>/state,<id>/events}`.
 
 ### Changed
 
-- Notify channel recipient identifiers are now read from env vars
-  (`AUTOLOOP_WECHAT_RECIPIENT`, `AUTOLOOP_WECHAT_ACCOUNT`,
-  `AUTOLOOP_WHATSAPP_RECIPIENT`); an unset channel is silently skipped
-  and the fallback chain moves to the next tier.
+- Build now `rm -rf dist` before `tsc` so renamed/relocated sources can't
+  leave stale artefacts behind.
+- `tasks/` is in `.gitignore` — internal design / WIP notes live locally
+  only.
 
 ## [3.5.3] - 2026-05-10
 
