@@ -12,7 +12,7 @@ It's a TypeScript runtime for orchestrating Claude Code, OpenAI Codex, Gemini, C
 
 > Claude Code, Codex, Gemini, Cursor Agent, OpenCode, or your own custom CLI — orchestrated as one runtime.
 >
-> **Runs standalone, with first-class OpenClaw plugin support and a path to other claw-style agent platforms.**
+> **Runs standalone, as an OpenClaw plugin, or as a Model Context Protocol (MCP) server — drop it into Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose, or any MCP-compatible host.**
 
 [![npm version](https://img.shields.io/npm/v/@enderfga/claw-orchestrator.svg)](https://www.npmjs.com/package/@enderfga/claw-orchestrator)
 [![CI](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Enderfga/claw-orchestrator/actions/workflows/ci.yml)
@@ -41,7 +41,8 @@ Claw Orchestrator is the control layer for that.
 - Run Claude Code or Codex as a headless coding agent
 - Keep persistent AI coding sessions alive across requests
 - Build multi-agent coding teams with isolated git worktrees
-- Expose coding agents as tools to OpenClaw, MCP servers, bots, dashboards, or custom runtimes
+- Expose coding agents as MCP tools so Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose, and other MCP-capable hosts can drive them
+- Use the same toolset from OpenClaw, bots, dashboards, or custom runtimes
 - Route tasks across Claude Code, Codex, Gemini, Cursor Agent, OpenCode, and custom CLIs
 
 ---
@@ -155,6 +156,67 @@ curl -fsSL https://raw.githubusercontent.com/Enderfga/claw-orchestrator/main/ins
 ```
 
 This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and restarts the gateway. See [`skills/references/getting-started.md`](./skills/references/getting-started.md) for the full setup.
+
+### As an MCP server (Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose)
+
+Every host that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can pick up the orchestrator's full toolset (41 tools — sessions, council, ultraplan, ultrareview, autoloop, codex, inbox) over stdio.
+
+```bash
+npm install -g @enderfga/claw-orchestrator
+# now `clawo-mcp` is on PATH
+```
+
+Register it with your host:
+
+<details>
+<summary><strong>Hermes Agent</strong> — <code>~/.hermes/config.yaml</code></summary>
+
+```yaml
+mcp_servers:
+  clawo:
+    command: clawo-mcp
+    env:
+      ANTHROPIC_API_KEY: "..."
+      OPENAI_API_KEY: "..."
+      GEMINI_API_KEY: "..."
+    # Optional: keep the model focused — Hermes will surface only these
+    tools:
+      include: [mcp_clawo_session_start, mcp_clawo_session_send, mcp_clawo_council_start]
+```
+</details>
+
+<details>
+<summary><strong>Claude Desktop / Claude Code</strong> — <code>claude_desktop_config.json</code></summary>
+
+```json
+{
+  "mcpServers": {
+    "clawo": {
+      "command": "clawo-mcp",
+      "env": {
+        "ANTHROPIC_API_KEY": "...",
+        "OPENAI_API_KEY": "...",
+        "CLAWO_MCP_TOOLS": "session_start,session_send,council_start,council_status,ultrareview_start"
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Cursor / Cline / Continue / Zed / Windsurf / Goose</strong></summary>
+
+Every one of these hosts speaks the standard MCP stdio config. Add `clawo-mcp` as a server with the same `command + args + env` shape — refer to your host's MCP documentation for the exact file path.
+</details>
+
+**Notes**
+
+- Hosts prefix MCP tool names with the server slug (e.g. `mcp_clawo_session_start` in Hermes). The model sees the prefixed name; you don't need to call it manually.
+- `CLAWO_MCP_TOOLS` (comma-separated allowlist) keeps the exposed surface tight when the host has a tight tool budget. Without it, all 41 tools are advertised.
+- Hosts do not forward arbitrary shell env vars to MCP servers — list every API key your engines need (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.) explicitly under `env`.
+
+Full reference: [`skills/references/mcp.md`](./skills/references/mcp.md).
 
 ---
 

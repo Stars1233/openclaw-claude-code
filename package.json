@@ -1,12 +1,13 @@
 {
   "name": "@enderfga/claw-orchestrator",
-  "version": "3.6.0",
-  "description": "Claw Orchestrator — run Claude Code, Codex, Gemini, Cursor Agent, OpenCode and custom coding CLIs as one unified runtime for claw-style agent systems. Runs standalone, with first-class OpenClaw plugin support. Persistent sessions, multi-agent council, tool orchestration.",
+  "version": "3.7.0",
+  "description": "Claw Orchestrator — run Claude Code, Codex, Gemini, Cursor Agent, OpenCode and custom coding CLIs as one unified runtime. Drop into Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose or any Model Context Protocol (MCP) host, install as an OpenClaw plugin, or run standalone. Persistent sessions, multi-agent council, ultraplan, ultrareview, autoloop, tool orchestration.",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "bin": {
-    "clawo": "./dist/bin/cli.js"
+    "clawo": "./dist/bin/cli.js",
+    "clawo-mcp": "./dist/bin/mcp-server.js"
   },
   "openclaw": {
     "extensions": [
@@ -47,6 +48,7 @@
     "gemini",
     "cursor",
     "cursor-agent",
+    "opencode",
     "coding-agent",
     "ai-agent",
     "agent-orchestration",
@@ -56,9 +58,26 @@
     "persistent-sessions",
     "session-management",
     "tool-orchestration",
-    "mcp",
     "cli",
-    "typescript"
+    "typescript",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "hermes",
+    "hermes-agent",
+    "nous-research",
+    "claude-desktop",
+    "claude-mcp",
+    "cursor-mcp",
+    "cline",
+    "continue-dev",
+    "zed",
+    "windsurf",
+    "goose",
+    "anthropic",
+    "openai",
+    "google-gemini"
   ],
   "author": "enderfga",
   "repository": {
@@ -71,6 +90,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^12.1.0"
   },
   "peerDependencies": {

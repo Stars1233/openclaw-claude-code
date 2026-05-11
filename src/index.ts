@@ -86,10 +86,18 @@ const plugin = {
 
     function getManager(): SessionManager {
       if (!manager) {
-        api.logger.info('[claw-orchestrator] First use — initialising SessionManager and embedded server');
+        api.logger.info('[claw-orchestrator] First use — initialising SessionManager');
         manager = new SessionManager(rawConfig);
-        server = new EmbeddedServer(manager);
-        server.start().catch((err) => api.logger.error('[claw-orchestrator] Embedded server failed to start:', err));
+        // When running as a pure MCP server (or any standalone use that
+        // doesn't need the HTTP control plane), CLAWO_NO_EMBEDDED_SERVER=1
+        // avoids binding port 18796 and pulling in the embedded server's
+        // dependencies. The OpenClaw plugin path leaves it enabled so the
+        // `clawo` CLI can keep talking to it.
+        if (process.env.CLAWO_NO_EMBEDDED_SERVER !== '1') {
+          api.logger.info('[claw-orchestrator] Starting embedded HTTP server');
+          server = new EmbeddedServer(manager);
+          server.start().catch((err) => api.logger.error('[claw-orchestrator] Embedded server failed to start:', err));
+        }
       }
       return manager;
     }

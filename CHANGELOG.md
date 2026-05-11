@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-05-11
+
+### Added — Model Context Protocol (MCP) server
+
+- **`clawo-mcp` binary.** A stdio MCP server that re-exports the orchestrator's
+  full toolset (41 tools — sessions, council, ultraplan, ultrareview, autoloop,
+  codex, inbox) to any MCP-compatible host: Hermes Agent, Claude Desktop,
+  Claude Code, Cursor, Cline, Continue, Zed, Windsurf, Goose, and others.
+- **Shared tool definitions.** The MCP server captures the same tool
+  registrations used by the OpenClaw plugin entry, so there is exactly one
+  source of truth and zero schema drift between the two distribution forms.
+- **Tool annotations.** Read-only, destructive, and open-world hints are
+  advertised per tool so hosts can prefer safer tools during reasoning.
+- **`CLAWO_MCP_TOOLS` env.** Comma-separated allowlist to keep the exposed
+  surface tight when the host has a small tool budget.
+- **`CLAWO_NO_EMBEDDED_SERVER` env.** Lets the plugin skip starting its HTTP
+  control plane (port 18796) when running in pure MCP mode; `clawo-mcp` sets
+  this automatically.
+- New reference doc: [`skills/references/mcp.md`](./skills/references/mcp.md)
+  with per-host configuration snippets and troubleshooting.
+
 ## [3.6.0] - 2026-05-11
 
 ### Added — autoloop ergonomics & guardrails
