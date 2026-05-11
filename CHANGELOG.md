@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.4] - 2026-05-10
+
+### Changed
+
+- Notify channel recipient identifiers are now read from env vars
+  (`AUTOLOOP_WECHAT_RECIPIENT`, `AUTOLOOP_WECHAT_ACCOUNT`,
+  `AUTOLOOP_WHATSAPP_RECIPIENT`); an unset channel is silently skipped
+  and the fallback chain moves to the next tier.
+
 ## [3.5.3] - 2026-05-10
 
 ### Added — auto-compact on context-budget threshold

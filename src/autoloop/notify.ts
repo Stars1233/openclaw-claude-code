@@ -18,9 +18,14 @@ import * as os from 'node:os';
 import type { PushChannel, PushLevel } from './messages.js';
 import { type Logger, nullLogger } from '../logger.js';
 
-const WECHAT_RECIPIENT = '<env:AUTOLOOP_WECHAT_RECIPIENT>';
-const WECHAT_ACCOUNT = '<env:AUTOLOOP_WECHAT_ACCOUNT>';
-const WHATSAPP_RECIPIENT = '<env:AUTOLOOP_WHATSAPP_RECIPIENT>';
+// Recipient identifiers are personal contact info — never hard-code them.
+// Set the following env vars before relying on the matching channel; if a
+// var is unset that channel is silently skipped and the fallback chain moves
+// on. Email (independent SMTP via push-api-skill script) is the final tier
+// regardless of these.
+const WECHAT_RECIPIENT = process.env.AUTOLOOP_WECHAT_RECIPIENT ?? '';
+const WECHAT_ACCOUNT = process.env.AUTOLOOP_WECHAT_ACCOUNT ?? '';
+const WHATSAPP_RECIPIENT = process.env.AUTOLOOP_WHATSAPP_RECIPIENT ?? '';
 
 interface RunResult {
   exit_code: number;
@@ -74,6 +79,10 @@ function formatMessage(level: PushLevel, summary: string): string {
 }
 
 async function tryWechat(text: string, logger: Logger): Promise<boolean> {
+  if (!WECHAT_RECIPIENT || !WECHAT_ACCOUNT) {
+    logger.info?.('[autoloop/notify] wechat skipped: AUTOLOOP_WECHAT_RECIPIENT / AUTOLOOP_WECHAT_ACCOUNT not set');
+    return false;
+  }
   const r = await runCmd([
     'openclaw',
     'message',
@@ -93,6 +102,10 @@ async function tryWechat(text: string, logger: Logger): Promise<boolean> {
 }
 
 async function tryWhatsApp(text: string, logger: Logger): Promise<boolean> {
+  if (!WHATSAPP_RECIPIENT) {
+    logger.info?.('[autoloop/notify] whatsapp skipped: AUTOLOOP_WHATSAPP_RECIPIENT not set');
+    return false;
+  }
   const r = await runCmd([
     'openclaw',
     'message',

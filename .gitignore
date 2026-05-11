@@ -34,3 +34,7 @@ coverage/
 # All documentation lives under skills/. The repo is consumed by AI agents
 # that look there; docs/ is for local process scratch only and never shipped.
 docs/
+
+# Internal design docs and work-in-progress notes — local only.
+# Earlier history contained tasks/ files; those are scrubbed via filter-repo.
+tasks/
