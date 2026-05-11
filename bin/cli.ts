@@ -10,9 +10,33 @@
 
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 function getBaseUrl(): string {
   return process.env.CLAWO_API_URL || process.env.CLAUDE_CODE_API_URL || 'http://127.0.0.1:18796';
+}
+
+/**
+ * Locate the auth token the embedded server requires (3.5.6+):
+ *   1. CLAWO_AUTH_TOKEN env (explicit override)
+ *   2. OPENCLAW_SERVER_TOKEN env (same env the server reads — handy when both
+ *      processes share the same shell)
+ *   3. ~/.openclaw/server-token file (the server writes this at startup)
+ * Returns null if nothing is found — caller falls through to an unauthenticated
+ * request, which the server will reject with 401 unless `OPENCLAW_SERVER_TOKEN=disabled`.
+ */
+function getAuthToken(): string | null {
+  const envToken = process.env.CLAWO_AUTH_TOKEN || process.env.OPENCLAW_SERVER_TOKEN;
+  if (envToken && envToken !== 'disabled') return envToken;
+  try {
+    const filePath = path.join(os.homedir(), '.openclaw', 'server-token');
+    const t = fs.readFileSync(filePath, 'utf-8').trim();
+    return t || null;
+  } catch {
+    return null;
+  }
 }
 
 function getCliVersion(): string {
@@ -29,10 +53,10 @@ function getCliVersion(): string {
 // ─── HTTP Client ─────────────────────────────────────────────────────────────
 
 async function api(path: string, method = 'GET', body?: unknown): Promise<Record<string, unknown>> {
-  const opts: RequestInit = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const opts: RequestInit = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   try {
     const base = getBaseUrl();

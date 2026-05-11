@@ -5,7 +5,7 @@
  * and verify responses. SessionManager methods are mocked.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import * as http from 'node:http';
 import * as net from 'node:net';
 import { EmbeddedServer } from '../embedded-server.js';
@@ -134,14 +134,21 @@ describe('EmbeddedServer', () => {
   let port: number;
 
   beforeEach(async () => {
-    // Clear env vars to prevent interference
-    delete process.env.OPENCLAW_SERVER_TOKEN;
+    // 3.5.6+: server auto-generates a token by default. Most routing /
+    // rate-limit / CORS tests don't care about auth and shouldn't have to
+    // know about it, so opt out for these tests via the explicit sentinel.
+    // Auth-specific tests below override this env back to a literal token.
+    process.env.OPENCLAW_SERVER_TOKEN = 'disabled';
     delete process.env.OPENCLAW_RATE_LIMIT;
     delete process.env.OPENCLAW_CORS_ORIGINS;
 
     manager = createMockManager();
     port = await getFreePort();
     server = new EmbeddedServer(manager, port);
+  });
+
+  afterAll(() => {
+    delete process.env.OPENCLAW_SERVER_TOKEN;
   });
 
   afterEach(async () => {
@@ -213,6 +220,64 @@ describe('EmbeddedServer', () => {
         headers: { Authorization: 'Bearer wrong-token' },
       });
       expect(res.status).toBe(401);
+    });
+
+    it('accepts ?token=<v> query param and sets cookie for follow-up requests', async () => {
+      process.env.OPENCLAW_SERVER_TOKEN = 'secret-token';
+      port = await getFreePort();
+      server = new EmbeddedServer(manager, port);
+      await server.start();
+
+      const res = await request(port, '/health?token=secret-token');
+      expect(res.status).toBe(200);
+      // /health skips auth, no cookie expected. Hit a real route to verify
+      // the query→cookie handoff.
+      const res2 = await request(port, '/agents?token=secret-token');
+      expect(res2.status).toBe(200);
+      const setCookie = res2.headers['set-cookie'];
+      const cookieStr = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+      expect(cookieStr).toBeDefined();
+      expect(String(cookieStr)).toMatch(/clawo_auth=secret-token/);
+      expect(String(cookieStr)).toMatch(/HttpOnly/);
+      expect(String(cookieStr)).toMatch(/SameSite=Strict/);
+    });
+
+    it('accepts clawo_auth cookie in lieu of Bearer header', async () => {
+      process.env.OPENCLAW_SERVER_TOKEN = 'secret-token';
+      port = await getFreePort();
+      server = new EmbeddedServer(manager, port);
+      await server.start();
+
+      const res = await request(port, '/session/list', {
+        method: 'POST',
+        body: {},
+        headers: { Cookie: 'clawo_auth=secret-token' },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('auto-generates a token by default (no env var set)', async () => {
+      delete process.env.OPENCLAW_SERVER_TOKEN;
+      port = await getFreePort();
+      server = new EmbeddedServer(manager, port);
+      await server.start();
+
+      // No token sent → 401
+      const res = await request(port, '/session/list', { method: 'POST', body: {} });
+      expect(res.status).toBe(401);
+      // /health still works
+      const health = await request(port, '/health');
+      expect(health.status).toBe(200);
+    });
+
+    it('OPENCLAW_SERVER_TOKEN=disabled disables auth entirely', async () => {
+      process.env.OPENCLAW_SERVER_TOKEN = 'disabled';
+      port = await getFreePort();
+      server = new EmbeddedServer(manager, port);
+      await server.start();
+
+      const res = await request(port, '/session/list', { method: 'POST', body: {} });
+      expect(res.status).toBe(200);
     });
   });
 

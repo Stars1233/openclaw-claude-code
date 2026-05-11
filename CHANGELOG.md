@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.6] - 2026-05-11
+
+### Fixed — embedded HTTP server auth-by-default (closes #61)
+
+The embedded HTTP server now requires authentication on every endpoint
+except `/health`. Previously it ran unauthenticated unless `OPENCLAW_SERVER_TOKEN`
+was explicitly set (CWE-306).
+
+| Mode | Trigger |
+|---|---|
+| **Auto-generate** (new default) | unset env var → server writes a fresh 32-byte token to `~/.openclaw/server-token` (mode 0600) at startup. |
+| **Explicit token** (unchanged) | `OPENCLAW_SERVER_TOKEN=<value>` |
+| **Disabled** (opt-out, new) | `OPENCLAW_SERVER_TOKEN=disabled` — single-user host only; logs a loud warning |
+
+Three ways to authenticate (all equivalent):
+
+1. `Authorization: Bearer <token>` header — for CLIs / scripts.
+2. `clawo_auth=<token>` cookie — set automatically when a browser hits
+   `/dashboard?token=<token>`. Subsequent same-origin fetches and
+   `EventSource` connections inherit the cookie.
+3. `?token=<token>` query string — the bootstrap path for the dashboard;
+   the server upgrades it to the cookie on the same response.
+
+The `clawo` CLI now reads the token automatically (env vars
+`CLAWO_AUTH_TOKEN` / `OPENCLAW_SERVER_TOKEN`, falling back to
+`~/.openclaw/server-token`). The dashboard URL printed at server start
+contains the token query — clicking it in a browser establishes the
+cookie, after which the URL can be bookmarked at plain `/dashboard`.
+
+### Changed
+
+- 4 new tests in `src/__tests__/embedded-server.test.ts` cover the
+  query-token → cookie handoff, cookie-only auth, the new auto-generate
+  default, and the `disabled` sentinel.
+
 ## [3.5.5] - 2026-05-11
 
 ### Added — three-agent autoloop architecture

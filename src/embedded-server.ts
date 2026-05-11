@@ -11,6 +11,7 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 import { SessionManager } from './session-manager.js';
 import { sanitizeCwd, validateRegex } from './validation.js';
 import type { EffortLevel } from './types.js';
@@ -51,23 +52,45 @@ export class EmbeddedServer {
     return recent.length <= this._rateLimit;
   }
 
+  private _writeTokenFile(token: string): void {
+    const tokenDir = path.join(os.homedir(), '.openclaw');
+    try {
+      if (!fs.existsSync(tokenDir)) fs.mkdirSync(tokenDir, { recursive: true });
+      fs.writeFileSync(path.join(tokenDir, 'server-token'), token, { mode: 0o600 });
+    } catch (err) {
+      console.warn(`[embedded-server] failed to write server-token file: ${(err as Error).message}`);
+    }
+  }
+
   async start(): Promise<number> {
-    // Auth token: opt-in via OPENCLAW_SERVER_TOKEN env var.
-    // When set, all requests (except /health) must include Authorization: Bearer <token>.
-    // Default: no auth (localhost-only is the primary security boundary).
+    // Auth token policy (changed in 3.5.6 — closes CWE-306 from issue #61):
+    //
+    //   default                    → auto-generate 32-byte random token,
+    //                                  write to ~/.openclaw/server-token mode 0600.
+    //                                  Required on every non-/health request via
+    //                                  Bearer header OR `clawo_auth` cookie OR
+    //                                  ?token=<v> query.
+    //   OPENCLAW_SERVER_TOKEN=<v>  → use the explicit token (legacy behaviour).
+    //   OPENCLAW_SERVER_TOKEN=disabled → opt out of auth entirely. Only safe on
+    //                                  a single-user host; loud warning at start.
+    //
+    // The file is mode 0600 (owner-read-only). Same-user CLI + dashboard read it;
+    // other users on the same box cannot. Browsers reach /dashboard via the
+    // `?token=<v>` query once; the server replies with a Set-Cookie so subsequent
+    // requests authenticate via the cookie.
     const envToken = process.env.OPENCLAW_SERVER_TOKEN;
-    if (envToken) {
-      this.authToken = envToken;
-      // Write token to file for CLI to read
-      const tokenDir = path.join(os.homedir(), '.openclaw');
-      try {
-        if (!fs.existsSync(tokenDir)) fs.mkdirSync(tokenDir, { recursive: true });
-        fs.writeFileSync(path.join(tokenDir, 'server-token'), this.authToken, { mode: 0o600 });
-      } catch {
-        /* best effort */
-      }
-    } else {
+    if (envToken === 'disabled') {
       this.authToken = null;
+      console.warn(
+        '[embedded-server] OPENCLAW_SERVER_TOKEN=disabled — authentication is OFF. ' +
+          'All endpoints are reachable to any process that can connect. Only safe on a trusted single-user host.',
+      );
+    } else if (envToken) {
+      this.authToken = envToken;
+      this._writeTokenFile(this.authToken);
+    } else {
+      this.authToken = crypto.randomBytes(32).toString('hex');
+      this._writeTokenFile(this.authToken);
     }
 
     this._rateLimitCleanupTimer = setInterval(() => {
@@ -95,9 +118,15 @@ export class EmbeddedServer {
       });
 
       this.server.listen(this.port, this.host, () => {
-        console.log(
-          `[embedded-server] Listening on http://${this.host}:${this.port}${this.authToken ? ' (auth enabled)' : ''}`,
-        );
+        if (this.authToken) {
+          console.log(`[embedded-server] Listening on http://${this.host}:${this.port} (auth enabled)`);
+          console.log(`[embedded-server] Token file: ${path.join(os.homedir(), '.openclaw', 'server-token')}`);
+          console.log(
+            `[embedded-server] Dashboard:  http://${this.host}:${this.port}/dashboard?token=${this.authToken}`,
+          );
+        } else {
+          console.log(`[embedded-server] Listening on http://${this.host}:${this.port} (AUTH DISABLED)`);
+        }
         resolve(this.port);
       });
     });
@@ -143,13 +172,35 @@ export class EmbeddedServer {
     const url = new URL(req.url || '/', `http://localhost:${this.port}`);
     const path = url.pathname;
 
-    // Bearer token auth (skip for health checks)
+    // Auth: accept Bearer header, `clawo_auth` cookie, or `?token=` query
+    // (auth-skip allow-list: /health for monitoring).
     if (this.authToken && path !== '/health') {
       const authHeader = req.headers.authorization || '';
-      if (authHeader !== `Bearer ${this.authToken}`) {
+      const queryToken = url.searchParams.get('token');
+      const cookieHeader = req.headers.cookie || '';
+      const cookieToken = /(?:^|;\s*)clawo_auth=([^;]+)/.exec(cookieHeader)?.[1];
+
+      const bearerOk = authHeader === `Bearer ${this.authToken}`;
+      const queryOk = queryToken === this.authToken;
+      const cookieOk = cookieToken === this.authToken;
+
+      if (!bearerOk && !queryOk && !cookieOk) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'Unauthorized — provide Authorization: Bearer <token>' }));
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: 'Unauthorized',
+            hint: 'Send Authorization: Bearer <token> (token at ~/.openclaw/server-token), or visit /dashboard?token=<token> in a browser to set the cookie.',
+          }),
+        );
         return;
+      }
+
+      // First-touch via query token → persist as cookie so subsequent same-origin
+      // requests (including EventSource) authenticate without exposing the token
+      // in URLs / referrers / access logs.
+      if (queryOk && !cookieOk) {
+        res.setHeader('Set-Cookie', `clawo_auth=${this.authToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);
       }
     }
 
