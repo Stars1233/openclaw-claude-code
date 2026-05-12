@@ -689,7 +689,9 @@ export class EmbeddedServer {
         return;
       }
 
-      const uaMatch = path.match(/^\/ultraapp(?:\/([^/]+))?(?:\/([^/]+))?$/);
+      const uaMatch = path.match(
+        /^\/ultraapp(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?$/,
+      );
       if (uaMatch) {
         const ua = this.manager.getUltraappManager?.();
         if (!ua) {
@@ -698,6 +700,7 @@ export class EmbeddedServer {
         }
         const seg1 = uaMatch[1];
         const seg2 = uaMatch[2];
+        const seg3 = uaMatch[3];
 
         if (seg1 === 'list' && !seg2) {
           const runs = await ua.store.listRuns();
@@ -730,6 +733,21 @@ export class EmbeddedServer {
         if (seg1 && seg2 === 'spec-edit') {
           await ua.applySpecEdit(seg1, (body as { patch: unknown[] }).patch as never);
           json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'build' && seg3 === 'cancel') {
+          ua.cancelBuild(seg1);
+          json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'build' && !seg3) {
+          await ua.startBuild(seg1);
+          json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'artifacts' && !seg3) {
+          const arts = await ua.store.readArtifacts(seg1);
+          json(200, { ok: true, artifacts: arts });
           return;
         }
         if (seg1 && seg2 === 'files') {

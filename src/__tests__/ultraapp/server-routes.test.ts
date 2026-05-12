@@ -57,6 +57,8 @@ function fakeManager() {
       submitAnswer: vi.fn().mockResolvedValue(undefined),
       applySpecEdit: vi.fn().mockResolvedValue(undefined),
       addFile: vi.fn().mockResolvedValue({ ref: '/tmp/foo' }),
+      startBuild: vi.fn().mockResolvedValue(undefined),
+      cancelBuild: vi.fn(),
       subscribe: vi.fn().mockImplementation((_id: string, listener: (ev: unknown) => void) => {
         emitter.on('event', listener);
         return () => emitter.off('event', listener);
@@ -74,6 +76,11 @@ function fakeManager() {
         readSpec: vi.fn().mockResolvedValue({ meta: { name: 'demo' } }),
         readChat: vi.fn().mockResolvedValue([]),
         readState: vi.fn().mockResolvedValue({ runId: 'ua-test-1', mode: 'interview' }),
+        readArtifacts: vi
+          .fn()
+          .mockResolvedValue([
+            { version: 'v1', worktreePath: '/tmp/cb', builtAt: '2026-05-12T00:00:00Z' },
+          ]),
       },
     }),
   };
@@ -126,5 +133,24 @@ describe('ultraapp routes', () => {
     const j = JSON.parse(r.body);
     expect(j.spec.meta.name).toBe('demo');
     expect(j.state.mode).toBe('interview');
+  });
+
+  it('POST /ultraapp/<id>/build enqueues a build', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/build', { body: {} });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/build/cancel cancels a build', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/build/cancel', { body: {} });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/artifacts returns artifact list', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/artifacts', { body: {} });
+    expect(r.status).toBe(200);
+    const j = JSON.parse(r.body);
+    expect(j.artifacts[0].version).toBe('v1');
   });
 });
