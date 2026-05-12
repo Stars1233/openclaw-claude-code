@@ -405,6 +405,53 @@
       .forge-msg.user { background: #e0eaff; align-self: flex-end; }
       .forge-msg.assistant { background: var(--surface); border: 1px solid var(--border); }
       .forge-msg.system { background: var(--surface-2); color: var(--muted); font-size: 12px; }
+      .forge-share {
+        background: var(--surface);
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        padding: 12px;
+        margin: 8px 0;
+      }
+      .forge-share strong { color: var(--accent); display: block; margin-bottom: 6px; }
+      .forge-share a { color: var(--accent); word-break: break-all; }
+      .forge-share-actions { display: flex; gap: 8px; margin-top: 10px; }
+      .forge-share-actions button {
+        padding: 4px 12px;
+        font-size: 12px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .forge-public-modal {
+        max-width: 600px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      .forge-public-modal pre {
+        background: var(--surface-2);
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        overflow-x: auto;
+      }
+      .forge-public-modal h4 { margin-bottom: 4px; }
+      .runItem .lifecycle-actions {
+        display: none;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .runItem:hover .lifecycle-actions { display: flex; }
+      .lifecycle-actions button {
+        font-size: 10px;
+        padding: 2px 6px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .lifecycle-actions button:hover { background: var(--surface-2); }
       .forge-question {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -690,22 +737,44 @@
                   </div>
                 </li>`;
             } else {
+              const showLifecycle = r.mode === 'done' || r.mode === 'failed' || r.mode === 'build-complete';
+              const lifecycleHtml = showLifecycle
+                ? `<div class="lifecycle-actions">
+                     ${r.mode === 'done' ? `<button data-act="stop">Stop</button>` : ''}
+                     ${r.mode !== 'done' ? `<button data-act="start">Start</button>` : ''}
+                     <button data-act="delete">Delete</button>
+                   </div>`
+                : '';
               return `
                 <li class="runItem" data-id="${escapeHtml(r.runId)}" aria-selected="${r.runId === state.selectedId}">
                   <div class="id">${escapeHtml(r.title || r.runId)}</div>
                   <div class="meta">
                     <span class="badge ${r.mode}">${r.mode}</span>
                   </div>
+                  ${lifecycleHtml}
                 </li>`;
             }
           })
           .join('');
         ul.innerHTML = html;
         ul.querySelectorAll('.runItem').forEach((el) => {
-          el.addEventListener('click', () => {
+          // Click on item itself (not action button) opens it
+          el.addEventListener('click', (ev) => {
+            const t = ev.target;
+            if (t && t.closest('.lifecycle-actions')) return;
             state.selectedId = el.dataset.id;
             renderList();
             openDetail(el.dataset.id);
+          });
+          el.querySelectorAll('.lifecycle-actions button').forEach((btn) => {
+            btn.addEventListener('click', async (ev) => {
+              ev.stopPropagation();
+              const action = btn.dataset.act;
+              const id = el.dataset.id;
+              if (action === 'delete' && !confirm('Delete this run? Container, image, and on-disk artifacts are removed.')) return;
+              await forgeLifecycleAction(id, action);
+              refreshList();
+            });
           });
         });
       }
@@ -837,6 +906,9 @@
               const btn = $('forgeStartBuild');
               if (btn) btn.disabled = false;
             }
+          } else if (data.type === 'app-url') {
+            setForgeMode('done');
+            renderShareCard(data.url, data.version);
           } else if (data.type === 'error') {
             renderChatEntry({ role: 'system', kind: 'error', text: '[error] ' + data.message });
           }
@@ -878,6 +950,76 @@
         div.textContent = entry.text;
         m.appendChild(div);
         m.scrollTop = m.scrollHeight;
+      }
+
+      function renderShareCard(url, version) {
+        const m = $('forgeMessages');
+        if (!m) return;
+        const card = document.createElement('div');
+        card.className = 'forge-share';
+        card.innerHTML =
+          `<strong>App deployed (${escapeHtml(version)})</strong>` +
+          `<div><a href="${escapeHtml(url)}" target="_blank">${escapeHtml(url)}</a></div>` +
+          `<div class="forge-share-actions">` +
+          `<button data-act="copy">Copy</button>` +
+          `<button data-act="open">Open</button>` +
+          `<button data-act="public">Make Public…</button>` +
+          `</div>`;
+        card.querySelector('[data-act="copy"]').addEventListener('click', () => {
+          navigator.clipboard?.writeText(url);
+        });
+        card.querySelector('[data-act="open"]').addEventListener('click', () => {
+          window.open(url, '_blank');
+        });
+        card.querySelector('[data-act="public"]').addEventListener('click', () => openPublicModal(url));
+        m.appendChild(card);
+        m.scrollTop = m.scrollHeight;
+      }
+
+      function openPublicModal(localUrl) {
+        const dlg = document.createElement('dialog');
+        dlg.className = 'forge-public-modal';
+        const u = new URL(localUrl);
+        dlg.innerHTML =
+          `<h3>Make this app public</h3>` +
+          `<p>This app currently only runs on your machine. To share it, expose port ${escapeHtml(String(u.port || '19000'))} with one of these tools:</p>` +
+          `<h4>Cloudflare Tunnel</h4>` +
+          `<pre>cloudflared tunnel --url ${escapeHtml(u.origin)}</pre>` +
+          `<h4>ngrok</h4>` +
+          `<pre>ngrok http ${escapeHtml(u.port || '19000')}</pre>` +
+          `<h4>Tailscale Funnel</h4>` +
+          `<pre>tailscale serve --bg ${escapeHtml(u.origin)}</pre>` +
+          `<h4>Self-hosted (Caddy)</h4>` +
+          `<pre>example.com {\n  reverse_proxy ${escapeHtml(u.host)}\n}</pre>` +
+          `<p>Once exposed, your app will be reachable at <code>{your-public-host}${escapeHtml(u.pathname)}</code>.</p>` +
+          `<button data-act="close">Close</button>`;
+        document.body.appendChild(dlg);
+        dlg.showModal();
+        dlg.querySelector('[data-act="close"]').addEventListener('click', () => {
+          dlg.close();
+          dlg.remove();
+        });
+      }
+
+      async function forgeLifecycleAction(runId, action) {
+        try {
+          const r = await fetch('/ultraapp/' + encodeURIComponent(runId) + '/' + action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          const j = await r.json();
+          if (!j.ok) {
+            renderChatEntry({ role: 'system', kind: 'error', text: '[error] ' + action + ': ' + (j.error || 'unknown') });
+          }
+          if (action === 'delete' && j.ok && state.forge.runId === runId) {
+            // Run is gone — close it and refresh sidebar
+            state.forge.runId = null;
+            $('forgeMessages').innerHTML = '';
+          }
+        } catch (err) {
+          renderChatEntry({ role: 'system', kind: 'error', text: '[error] ' + action + ': ' + err.message });
+        }
       }
 
       function renderQuestion(q) {
