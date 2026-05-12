@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v1.0** — reference-trace harness. Reference traces are JSONL
+  recordings of an interview (Claude question envelopes + user answers +
+  tool calls) that the trace replayer feeds through the real interview
+  engine against a stubbed `SessionManager`. Each trace ships with a
+  frozen `expected/<name>.appspec.json` snapshot; the
+  `spec-extraction-quality.test.ts` test asserts replay output matches.
+  Future interview-engine or skill changes that drift the captured spec
+  fail this test loudly. New manual smoke runner
+  `tsx test-ultraapp-integration.ts --trace=<name|all>` exercises the
+  replay path outside CI.
+  - Bundled trace: **text-summariser** (synthetic, hand-crafted to
+    demonstrate the format).
+  - **User follow-up:** the v1.0 plan calls for 4 additional captured
+    traces — `image-batch-resize`, `vlog-cut`, `llm-agent-pipeline`,
+    `branching-dag` — that need a real Anthropic API run to author. Drop
+    each as `<name>.jsonl` + `expected/<name>.appspec.json` and append
+    to `TRACES` in `spec-extraction-quality.test.ts`. Format spec at
+    `src/__tests__/fixtures/ultraapp-traces/_format.md`.
+  - **Out of scope here (intentionally):** version bump to 4.0.0 and the
+    associated release tag. Per project rules, public-facing release
+    text needs explicit user approval first; the v1.0 release decision
+    + tag remains a user-side action.
 - **ultraapp v0.5** — done-mode feedback loop. After a run reaches `done`,
   any chat message is classified by a Haiku call into one of three buckets
   and routed accordingly:
