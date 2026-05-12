@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v0.4** — narrator. During build mode, a per-run Claude Haiku
+  session subscribes to the build event stream, batches events (every 6
+  events or 15 s of activity, whichever first; `build-complete` /
+  `build-failed` / `build-cancelled` flush immediately), and writes short
+  conversational chat updates ("agent-A is iterating; agent-B voted NO
+  citing missing error handling on the file uploader") instead of v0.2's
+  raw event lines. Falls back to one raw line per event if the narrator
+  LLM is unavailable. Language is auto-detected from prior interview
+  chat — Chinese in, Chinese out.
 - **ultraapp v0.3** — deploy + reverse-proxy router. After `build-complete`,
   the manager auto-runs `docker build` + `docker run -d --restart
   unless-stopped` on a dynamic port in `[19100, 19999]` and registers the
