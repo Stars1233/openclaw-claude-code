@@ -18,9 +18,7 @@ describe('UltraappBuildQueue', () => {
 
   it('reports queue position', async () => {
     const releases: Array<() => void> = [];
-    const worker = vi
-      .fn()
-      .mockImplementation(() => new Promise<void>((r) => releases.push(r)));
+    const worker = vi.fn().mockImplementation(() => new Promise<void>((r) => releases.push(r)));
     const q = new UltraappBuildQueue({ worker });
     await q.enqueue('a');
     await q.enqueue('b');
@@ -44,9 +42,7 @@ describe('UltraappBuildQueue', () => {
 
   it('emits queued event with position when enqueued behind another build', async () => {
     const releases: Array<() => void> = [];
-    const worker = vi
-      .fn()
-      .mockImplementation(() => new Promise<void>((r) => releases.push(r)));
+    const worker = vi.fn().mockImplementation(() => new Promise<void>((r) => releases.push(r)));
     const events: BuildEvent[] = [];
     const q = new UltraappBuildQueue({ worker });
     q.subscribe((e) => events.push(e));
@@ -64,9 +60,7 @@ describe('UltraappBuildQueue', () => {
 
   it('cancel removes pending', async () => {
     const releases: Array<() => void> = [];
-    const worker = vi
-      .fn()
-      .mockImplementation(() => new Promise<void>((r) => releases.push(r)));
+    const worker = vi.fn().mockImplementation(() => new Promise<void>((r) => releases.push(r)));
     const q = new UltraappBuildQueue({ worker });
     await q.enqueue('a');
     await q.enqueue('b');

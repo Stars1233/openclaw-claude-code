@@ -100,9 +100,7 @@ describe('UltraappManager', () => {
       fs.mkdirSync(codebase, { recursive: true });
       return { ok: true, worktreePath: codebase, rounds: 1 };
     });
-    const fix = vi
-      .spyOn(fixMod, 'runFixOnFailure')
-      .mockResolvedValue({ ok: true, rounds: 0 });
+    const fix = vi.spyOn(fixMod, 'runFixOnFailure').mockResolvedValue({ ok: true, rounds: 0 });
 
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
@@ -142,9 +140,7 @@ describe('UltraappManager', () => {
     const synth = vi
       .spyOn(councilMod, 'runCouncilSynth')
       .mockResolvedValue({ ok: false, reason: 'no consensus', rounds: 8 });
-    const fix = vi
-      .spyOn(fixMod, 'runFixOnFailure')
-      .mockResolvedValue({ ok: true, rounds: 0 });
+    const fix = vi.spyOn(fixMod, 'runFixOnFailure').mockResolvedValue({ ok: true, rounds: 0 });
 
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });

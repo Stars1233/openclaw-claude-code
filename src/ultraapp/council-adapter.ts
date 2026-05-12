@@ -93,8 +93,7 @@ export async function runCouncilSynth(args: CouncilSynthArgs): Promise<CouncilSy
     return { ok: false, reason: `council threw: ${(e as Error).message}`, rounds: 0 };
   }
 
-  const rounds =
-    session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
+  const rounds = session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
 
   if (session.status !== 'consensus') {
     if (session.status === 'max_rounds') {
@@ -174,11 +173,7 @@ async function snapshotMainBranch(projectDir: string, dest: string): Promise<voi
   spawnSync('git', ['commit', '--allow-empty', '-m', 'consensus snapshot'], { cwd: dest });
 }
 
-async function defaultCouncilRun(
-  cfg: CouncilConfig,
-  sm: SessionManagerLike,
-  task: string,
-): Promise<CouncilSession> {
+async function defaultCouncilRun(cfg: CouncilConfig, sm: SessionManagerLike, task: string): Promise<CouncilSession> {
   const { Council } = await import('../council.js');
   const council = new Council(cfg, sm as never);
   return council.run(task);

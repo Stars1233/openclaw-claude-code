@@ -689,9 +689,7 @@ export class EmbeddedServer {
         return;
       }
 
-      const uaMatch = path.match(
-        /^\/ultraapp(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?$/,
-      );
+      const uaMatch = path.match(/^\/ultraapp(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?$/);
       if (uaMatch) {
         const ua = this.manager.getUltraappManager?.();
         if (!ua) {

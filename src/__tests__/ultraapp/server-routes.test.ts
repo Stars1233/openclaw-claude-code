@@ -78,9 +78,7 @@ function fakeManager() {
         readState: vi.fn().mockResolvedValue({ runId: 'ua-test-1', mode: 'interview' }),
         readArtifacts: vi
           .fn()
-          .mockResolvedValue([
-            { version: 'v1', worktreePath: '/tmp/cb', builtAt: '2026-05-12T00:00:00Z' },
-          ]),
+          .mockResolvedValue([{ version: 'v1', worktreePath: '/tmp/cb', builtAt: '2026-05-12T00:00:00Z' }]),
       },
     }),
   };

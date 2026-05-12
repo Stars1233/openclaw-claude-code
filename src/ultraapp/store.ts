@@ -4,14 +4,7 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { type AppSpec, makeEmptySpec, validateAppSpec } from './spec.js';
 
-export type RunMode =
-  | 'interview'
-  | 'queued'
-  | 'building'
-  | 'build-complete'
-  | 'done'
-  | 'failed'
-  | 'cancelled';
+export type RunMode = 'interview' | 'queued' | 'building' | 'build-complete' | 'done' | 'failed' | 'cancelled';
 
 export interface RunState {
   runId: string;
@@ -164,33 +157,25 @@ export class UltraappStore {
     return this.runDir(runId);
   }
 
-  async recordBuildArtifact(
-    runId: string,
-    args: { worktreePath: string; version: string },
-  ): Promise<void> {
+  async recordBuildArtifact(runId: string, args: { worktreePath: string; version: string }): Promise<void> {
     const dir = path.join(this.versionsDir(runId), args.version);
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(
       path.join(dir, 'artifact.json'),
-      JSON.stringify(
-        { worktreePath: args.worktreePath, builtAt: new Date().toISOString() },
-        null,
-        2,
-      ),
+      JSON.stringify({ worktreePath: args.worktreePath, builtAt: new Date().toISOString() }, null, 2),
     );
   }
 
-  async readArtifacts(
-    runId: string,
-  ): Promise<Array<{ version: string; worktreePath: string; builtAt: string }>> {
+  async readArtifacts(runId: string): Promise<Array<{ version: string; worktreePath: string; builtAt: string }>> {
     try {
       const versions = await fsp.readdir(this.versionsDir(runId));
       const out: Array<{ version: string; worktreePath: string; builtAt: string }> = [];
       for (const v of versions) {
         try {
-          const a = JSON.parse(
-            await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8'),
-          ) as { worktreePath: string; builtAt: string };
+          const a = JSON.parse(await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8')) as {
+            worktreePath: string;
+            builtAt: string;
+          };
           out.push({ version: v, worktreePath: a.worktreePath, builtAt: a.builtAt });
         } catch {
           /* skip */
