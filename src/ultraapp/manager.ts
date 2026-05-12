@@ -23,6 +23,10 @@ import { dockerBuild, dockerRun, dockerRmi } from './docker.js';
 import { startContainerAndRegister, stopContainerAndDeregister, deleteContainerAndDeregister } from './lifecycle.js';
 import type { UltraappRouter } from './router.js';
 import { Narrator } from './narrator.js';
+import { classifyFeedback, type FeedbackClass } from './feedback-classifier.js';
+import { runPatcher } from './patcher.js';
+import { startSpecDeltaInterview } from './spec-delta.js';
+import { snapshotVersion, swapVersion, listVersions } from './versions.js';
 
 export type RunEvent =
   | { type: 'question'; question: QuestionEnvelope }
@@ -72,6 +76,7 @@ export class UltraappManager {
   private readonly skillContent: string;
   private readonly buildQueue: UltraappBuildQueue;
   private readonly narrators = new Map<string, Narrator>();
+  private readonly classifierSessions = new Set<string>();
 
   constructor(private readonly opts: UltraappManagerOptions) {
     this.skillContent = loadSkill(opts.skillPath);
@@ -343,6 +348,171 @@ export class UltraappManager {
     }
     await this.opts.store.deleteRunFiles(runId);
     return { ok: true };
+  }
+
+  /**
+   * Done-mode chat message — classified into cosmetic / spec-delta /
+   * structural and routed accordingly. Cosmetic runs the patcher inline;
+   * spec-delta flips mode back to interview with a focused bootstrap;
+   * structural posts a narrator note suggesting a new run.
+   */
+  async submitDoneModeMessage(runId: string, text: string): Promise<void> {
+    const run = this.requireRun(runId);
+    const state = await this.opts.store.readState(runId);
+    if (state.mode !== 'done') {
+      // Outside done mode, fall through to the standard interview answer flow
+      return this.submitAnswer(runId, { value: '', freeform: text });
+    }
+
+    await this.opts.store.appendChat(runId, { role: 'user', kind: 'free', text });
+    this.emit(run, { type: 'chat', entry: { role: 'user', kind: 'free', text } });
+
+    const spec = await this.opts.store.readSpec(runId);
+    const language = detectLanguage(await this.opts.store.readChat(runId));
+    const cls = await classifyFeedback({
+      text,
+      currentSpec: spec,
+      language,
+      llmCall: (p) => this.classifierCall(runId, p),
+    });
+
+    const announce = `I read this as a ${cls.class} change. ${cls.proposedAction}. Stop me if that's wrong.`;
+    await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text: announce });
+    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text: announce } });
+
+    await this.routeFeedback(runId, cls.class, text, spec);
+  }
+
+  /**
+   * Promote a previously-built version to the currently-deployed one.
+   * Stops the current container, starts the target's container, and updates
+   * the router map atomically.
+   */
+  async promoteVersion(runId: string, toVersion: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.opts.router) return { ok: false, error: 'router not configured' };
+    const versions = listVersions(this.opts.store.versionsDir(runId));
+    const current = versions.find((v) => v.deploy?.containerName);
+    const target = versions.find((v) => v.version === toVersion);
+    if (!target?.deploy) return { ok: false, error: `version ${toVersion} has no deploy` };
+    const spec = await this.opts.store.readSpec(runId);
+    const r = await swapVersion({
+      versionsDir: this.opts.store.versionsDir(runId),
+      fromVersion: current?.version ?? toVersion,
+      toVersion,
+      slug: spec.meta.name,
+      router: this.opts.router,
+      startContainer: async (name: string) => {
+        const { dockerStart } = await import('./docker.js');
+        return dockerStart(name);
+      },
+      stopContainer: async (name: string) => {
+        const { dockerStop } = await import('./docker.js');
+        return dockerStop(name);
+      },
+    });
+    if (r.ok) {
+      const run = this.runs.get(runId);
+      if (run) this.emit(run, { type: 'app-url', url: target.deploy.url, version: toVersion });
+    }
+    return r;
+  }
+
+  /** Used by spec-delta to push a system-style bootstrap into the run session. */
+  async injectSystemMessage(runId: string, text: string): Promise<void> {
+    const run = this.requireRun(runId);
+    await this.opts.sessionManager.sendMessage(run.sessionName, `[system] ${text}`);
+  }
+
+  /** Used by spec-delta to flip mode back to 'interview' for the focused interview. */
+  async setModeForDelta(runId: string): Promise<void> {
+    await this.opts.store.setMode(runId, 'interview');
+    const run = this.runs.get(runId);
+    if (run) {
+      const spec = await this.opts.store.readSpec(runId);
+      this.emit(run, { type: 'spec-updated', spec });
+    }
+  }
+
+  private async classifierCall(runId: string, prompt: string): Promise<{ output: string }> {
+    const sessionName = `classifier-${runId}`;
+    if (!this.classifierSessions.has(runId)) {
+      await this.opts.sessionManager.startSession({
+        name: sessionName,
+        engine: 'claude',
+        model: 'claude-haiku-4-5-20251001',
+        permissionMode: 'bypassPermissions',
+      });
+      this.classifierSessions.add(runId);
+    }
+    return this.opts.sessionManager.sendMessage(sessionName, prompt);
+  }
+
+  private async routeFeedback(
+    runId: string,
+    klass: FeedbackClass,
+    text: string,
+    spec: AppSpec,
+  ): Promise<void> {
+    const run = this.requireRun(runId);
+    if (klass === 'cosmetic') {
+      await this.runPatcherFlow(runId, text);
+      return;
+    }
+    if (klass === 'spec-delta') {
+      await startSpecDeltaInterview(this, runId, text, spec);
+      return;
+    }
+    // structural
+    const note =
+      'This sounds like a different app entirely. Click + New in the sidebar to start a fresh ultraapp run.';
+    await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text: note });
+    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text: note } });
+  }
+
+  private async runPatcherFlow(runId: string, feedback: string): Promise<void> {
+    const run = this.requireRun(runId);
+    const versions = listVersions(this.opts.store.versionsDir(runId));
+    const current = versions.find((v) => v.deploy?.containerName) ?? versions[versions.length - 1];
+    if (!current?.worktreePath) {
+      const err = 'no buildable worktree found for patcher';
+      this.emit(run, { type: 'error', message: err });
+      return;
+    }
+
+    const patch = await runPatcher({
+      worktreePath: current.worktreePath,
+      feedback,
+      llmCall: (p) => this.patcherCall(runId, p),
+      validate: (a) => runFixOnFailure({ ...a, maxRounds: 3 }),
+    });
+    if (!patch.ok) {
+      const msg = `Patcher failed: ${patch.reason ?? 'unknown'}`;
+      await this.opts.store.appendChat(runId, { role: 'system', kind: 'error', text: msg });
+      this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'error', text: msg } });
+      return;
+    }
+    const nextVersion = snapshotVersion(this.opts.store.versionsDir(runId), {
+      worktreePath: current.worktreePath,
+      source: 'patcher',
+    });
+    const msg = `Patched and saved as ${nextVersion}. Promote it from the AppSpec column to swap the deployed container.`;
+    await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text: msg });
+    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text: msg } });
+  }
+
+  private async patcherCall(runId: string, prompt: string): Promise<{ output: string }> {
+    const sessionName = `patcher-${runId}-${Date.now()}`;
+    await this.opts.sessionManager.startSession({
+      name: sessionName,
+      engine: 'claude',
+      model: 'claude-opus-4-7',
+      permissionMode: 'bypassPermissions',
+    });
+    try {
+      return await this.opts.sessionManager.sendMessage(sessionName, prompt);
+    } finally {
+      await this.opts.sessionManager.stopSession(sessionName).catch(() => {});
+    }
   }
 
   private onBuildEvent(ev: BuildEvent): void {

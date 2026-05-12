@@ -248,6 +248,85 @@ describe('UltraappManager', () => {
     fix.mockRestore();
   });
 
+  it('submitDoneModeMessage cosmetic branch invokes patcher and snapshots a new version', async () => {
+    const sm = fakeSessionManager(
+      '```classification\n{"class":"cosmetic","reason":"r","proposedAction":"swap color"}\n```',
+    );
+    // First setup: pretend the run is in 'done' mode with a v1 deploy artifact
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    await store.setMode(id, 'done');
+    const wt = path.join(store.runDirAbsolute(id), 'versions', 'v1', 'codebase');
+    fs.mkdirSync(wt, { recursive: true });
+    fs.writeFileSync(path.join(wt, 'app.css'), '.btn { color: blue; }\n');
+    await store.recordBuildArtifact(id, { worktreePath: wt, version: 'v1' });
+    await store.recordDeploy(id, 'v1', {
+      url: 'http://localhost:19000/forge/demo/',
+      port: 19101,
+      containerName: 'ultraapp-demo-v1',
+      imageTag: 'ultraapp/demo:v1',
+    });
+
+    // Stub the patcher to return a valid diff via session sendMessage replies.
+    // We replace the canned reply between calls.
+    const patcherMod = await import('../../ultraapp/patcher.js');
+    const spy = vi
+      .spyOn(patcherMod, 'runPatcher')
+      .mockResolvedValue({ ok: true, newWorktreePath: wt });
+
+    await mgr.submitDoneModeMessage(id, 'make button green');
+    await new Promise((r) => setTimeout(r, 50));
+
+    // patcher was called and a v2 snapshot now exists
+    expect(spy).toHaveBeenCalledTimes(1);
+    const versionsDir = store.versionsDir(id);
+    expect(fs.existsSync(path.join(versionsDir, 'v2', 'artifact.json'))).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('submitDoneModeMessage spec-delta branch flips mode back to interview', async () => {
+    const sm = fakeSessionManager(
+      '```classification\n{"class":"spec-delta","reason":"r","proposedAction":"focused"}\n```',
+    );
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    await store.setMode(id, 'done');
+    await mgr.submitDoneModeMessage(id, 'add a thumbnail step');
+    await new Promise((r) => setTimeout(r, 50));
+    const s = await store.readState(id);
+    expect(s.mode).toBe('interview');
+  });
+
+  it('submitDoneModeMessage structural branch posts a "start fresh" narrator note', async () => {
+    const sm = fakeSessionManager(
+      '```classification\n{"class":"structural","reason":"r","proposedAction":"new run"}\n```',
+    );
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    await store.setMode(id, 'done');
+    await mgr.submitDoneModeMessage(id, 'this is a totally different app');
+    await new Promise((r) => setTimeout(r, 50));
+    const chat = await store.readChat(id);
+    const narration = chat.find(
+      (e) => e.kind === 'narrator' && /\+ New|fresh ultraapp/i.test(e.text),
+    );
+    expect(narration).toBeTruthy();
+    // Mode unchanged
+    const s = await store.readState(id);
+    expect(s.mode).toBe('done');
+  });
+
+  it('submitDoneModeMessage outside done mode falls through to submitAnswer', async () => {
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    // Mode is interview, not done
+    await mgr.submitDoneModeMessage(id, 'hi');
+    await new Promise((r) => setTimeout(r, 50));
+    const chat = await store.readChat(id);
+    expect(chat.some((e) => e.kind === 'answer' && e.text.includes('hi'))).toBe(true);
+  });
+
   it('startBuild marks failed when council fails', async () => {
     const councilMod = await import('../../ultraapp/council-adapter.js');
     const fixMod = await import('../../ultraapp/fix-on-failure.js');
