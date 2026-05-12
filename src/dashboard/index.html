@@ -757,12 +757,35 @@
                 <button id="forgeSpecApply">Apply edit</button>
                 <span class="forge-spec-msg" id="forgeSpecMsg"></span>
               </div>
-              <button id="forgeStartBuild" disabled>Start Build (v0.2)</button>
+              <button id="forgeStartBuild" disabled>Start Build</button>
             </div>
           </div>
         `;
         $('forgeSubmit').addEventListener('click', forgeOnSubmit);
         $('forgeSpecApply').addEventListener('click', forgeOnSpecApply);
+        $('forgeStartBuild').addEventListener('click', forgeOnStartBuild);
+      }
+
+      async function forgeOnStartBuild() {
+        const runId = state.forge.runId;
+        if (!runId) return;
+        const btn = $('forgeStartBuild');
+        if (btn) btn.disabled = true;
+        try {
+          const r = await fetch('/ultraapp/' + encodeURIComponent(runId) + '/build', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          const j = await r.json();
+          if (!j.ok) {
+            renderChatEntry({ role: 'system', kind: 'error', text: '[error] start build: ' + (j.error || 'unknown') });
+            if (btn) btn.disabled = false;
+          }
+        } catch (err) {
+          renderChatEntry({ role: 'system', kind: 'error', text: '[error] start build: ' + err.message });
+          if (btn) btn.disabled = false;
+        }
       }
 
       async function openForgeRun(runId) {
@@ -800,6 +823,20 @@
           else if (data.type === 'interview-complete') {
             renderChatEntry({ role: 'system', kind: 'narrator', text: 'Interview complete: ' + data.summary });
             $('forgeStartBuild').disabled = false;
+          } else if (data.type === 'build-event') {
+            const ev = data.event;
+            if (ev.type === 'queued') setForgeMode('queued');
+            else if (ev.type === 'build-start') setForgeMode('building');
+            else if (ev.type === 'build-complete') setForgeMode('build-complete');
+            else if (ev.type === 'build-failed') {
+              setForgeMode('failed');
+              const btn = $('forgeStartBuild');
+              if (btn) btn.disabled = false;
+            } else if (ev.type === 'build-cancelled') {
+              setForgeMode('failed');
+              const btn = $('forgeStartBuild');
+              if (btn) btn.disabled = false;
+            }
           } else if (data.type === 'error') {
             renderChatEntry({ role: 'system', kind: 'error', text: '[error] ' + data.message });
           }
@@ -815,6 +852,13 @@
         if (el) {
           el.dataset.mode = m;
           el.textContent = m;
+        }
+        const btn = $('forgeStartBuild');
+        if (btn) {
+          // Disabled while interview, queued, or building. Enabled at any
+          // resting state from which a (re)build is sensible.
+          const lockedModes = new Set(['interview', 'queued', 'building']);
+          btn.disabled = lockedModes.has(m);
         }
       }
 
