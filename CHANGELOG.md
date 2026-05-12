@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v0.2** — `[Start Build]` is wired to a real pipeline. The Forge
+  tab now drives the AppSpec through a 3-agent council super-task (uses the
+  existing `Council` class with three Claude Opus agents in fresh git
+  worktrees of a per-run project dir). On consensus the council snapshot is
+  copied into `versions/v1/codebase/` and a purpose-built fix-on-failure
+  helper runs `npm install && npm run build && npm test && docker build .`,
+  spawning a Claude session to fix mechanical failures and retrying up to
+  five rounds. Builds run through a global serial queue with FIFO position
+  reporting. The mode pill in the chat sidebar advances `interview → queued
+  → building → build-complete | failed` live via SSE. Deploy + reverse-proxy
+  routing arrive in v0.3.
+- New HTTP routes: `POST /ultraapp/<id>/build`,
+  `POST /ultraapp/<id>/build/cancel`, `POST /ultraapp/<id>/artifacts`.
+- `RunMode` widened to `interview | queued | building | build-complete | done
+  | failed | cancelled`.
 - **ultraapp v0.1** — new dashboard tab + tool family. Structured Q&A interview
   engine drives a Claude Opus session through a slot-driven AppSpec interview;
   runs persist to `~/.claw-orchestrator/ultraapps/`. Forge tab in the dashboard

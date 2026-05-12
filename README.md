@@ -102,9 +102,9 @@ await manager.autoloopChat("my-run", "go");
 
 SSE stream at `GET /autoloop/<id>/events` (the upcoming 3-pane UI subscribes here). See [`skills/references/autoloop.md`](./skills/references/autoloop.md) for the full operator reference: tool list, push policy, ledger layout, smoke test.
 
-### ultraapp (Forge tab — v0.1)
+### ultraapp (Forge tab — v0.2)
 
-Turn a structured Q&A interview into a deployable web app. Open the dashboard's Forge tab, click `+ New`, walk through the AppSpec interview (Claude Opus asks one question per turn with recommended options), and the spec lands on disk. Build / deploy / feedback loop arrive in v0.2 → v0.5; v1.0 ships a 5-trace integration smoke. See [`docs/superpowers/specs/2026-05-11-ultraapp-design.md`](./docs/superpowers/specs/2026-05-11-ultraapp-design.md).
+Turn a structured Q&A interview into a deployable web app. Open the dashboard's Forge tab, click `+ New`, walk through the AppSpec interview (Claude Opus asks one question per turn with recommended options), then click `Start Build` to dispatch a 3-agent council that synthesises a complete codebase and a purpose-built fix-on-failure helper that drives `npm install && npm run build && npm test && docker build .` to green. The on-disk artifact lands at `~/.claw-orchestrator/ultraapps/<id>/versions/v1/codebase/`. Deploy / narrator / feedback loop arrive in v0.3 → v0.5; v1.0 ships a 5-trace integration smoke. See [`docs/superpowers/specs/2026-05-11-ultraapp-design.md`](./docs/superpowers/specs/2026-05-11-ultraapp-design.md).
 
 ### Tool Orchestration
 
