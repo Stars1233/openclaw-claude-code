@@ -160,6 +160,7 @@ import { Msg as AutoloopMsg, type PushChannel, type PushLevel } from './autoloop
 import { appendPushLog, notifyUserFallbackChain } from './autoloop/notify.js';
 import { UltraappManager } from './ultraapp/manager.js';
 import { UltraappStore, defaultStoreRoot } from './ultraapp/store.js';
+import type { UltraappRouter } from './ultraapp/router.js';
 import {
   PERSIST_DISK_TTL_MS,
   DEBOUNCED_SAVE_MS,
@@ -219,6 +220,7 @@ export class SessionManager {
   private _inbox = new InboxManager();
   private logger: Logger;
   private _ultraappManager: UltraappManager | null = null;
+  private _ultraappRouter: UltraappRouter | null = null;
 
   constructor(config?: Partial<PluginConfig>, logger?: Logger) {
     this.logger = logger || createConsoleLogger('SessionManager');
@@ -260,9 +262,24 @@ export class SessionManager {
       this._ultraappManager = new UltraappManager({
         store: new UltraappStore(defaultStoreRoot()),
         sessionManager: this,
+        router: this._ultraappRouter ?? undefined,
       });
     }
     return this._ultraappManager;
+  }
+
+  /**
+   * Inject a started UltraappRouter so deploy + lifecycle wiring becomes
+   * available. Must be called BEFORE the first `getUltraappManager()` call —
+   * the manager is constructed lazily and reads the router reference at that
+   * point. Production: bin/cli.ts wires this. Tests: leave unset to keep
+   * v0.2-style "build-complete is resting state" behaviour.
+   */
+  setUltraappRouter(router: UltraappRouter): void {
+    if (this._ultraappManager) {
+      throw new Error('setUltraappRouter must be called before getUltraappManager');
+    }
+    this._ultraappRouter = router;
   }
 
   // ─── Session Lifecycle ─────────────────────────────────────────────────
