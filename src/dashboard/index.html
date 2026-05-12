@@ -353,6 +353,160 @@
         border-top: 1px solid var(--border);
         background: var(--surface);
       }
+      /* ─── Forge tab ──────────────────────────────────────────── */
+      .forge-layout {
+        display: grid;
+        grid-template-columns: 1fr 380px;
+        height: 100%;
+        gap: 0;
+      }
+      .forge-chat {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        overflow: hidden;
+        height: 100%;
+      }
+      .forge-mode {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        background: var(--surface-2);
+        color: var(--muted);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        align-self: flex-start;
+      }
+      .forge-mode[data-mode='build'],
+      .forge-mode[data-mode='building'] { background: var(--info); color: white; }
+      .forge-mode[data-mode='done'],
+      .forge-mode[data-mode='build-complete'] { background: var(--accent); color: white; }
+      .forge-mode[data-mode='failed'] { background: var(--error); color: white; }
+      .forge-mode[data-mode='queued'] { background: var(--warn); color: white; }
+      .forge-empty {
+        margin: auto;
+        max-width: 440px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .forge-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 8px;
+        margin-bottom: 8px;
+      }
+      .forge-msg {
+        padding: 6px 10px;
+        margin: 4px 0;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .forge-msg.user { background: #e0eaff; align-self: flex-end; }
+      .forge-msg.assistant { background: var(--surface); border: 1px solid var(--border); }
+      .forge-msg.system { background: var(--surface-2); color: var(--muted); font-size: 12px; }
+      .forge-question {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        margin: 8px 0;
+      }
+      .forge-question .ctx { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+      .forge-question .q { font-weight: 600; margin-bottom: 8px; }
+      .forge-question .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+      .forge-question .opt {
+        padding: 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        cursor: pointer;
+        font-size: 12px;
+        background: var(--surface);
+      }
+      .forge-question .opt.recommended { border-color: var(--accent); }
+      .forge-question .opt.selected { background: var(--accent); color: white; border-color: var(--accent); }
+      .forge-input {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border);
+      }
+      .forge-input textarea {
+        resize: vertical;
+        font-family: inherit;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .forge-input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .forge-input button {
+        padding: 6px 14px;
+        border-radius: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+      }
+      .forge-input button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .forge-spec {
+        border-left: 1px solid var(--border);
+        padding: 16px;
+        overflow-y: auto;
+        background: var(--surface-2);
+        display: flex;
+        flex-direction: column;
+      }
+      .forge-spec h3 { margin: 0 0 8px 0; }
+      .forge-spec textarea {
+        width: 100%;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        font-size: 11px;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        flex: 1;
+      }
+      .forge-spec-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: center;
+      }
+      .forge-spec-actions button {
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        cursor: pointer;
+      }
+      .forge-spec-msg { font-size: 11px; color: var(--muted); }
+      #forgeNew {
+        margin: 8px 12px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        width: calc(100% - 24px);
+      }
+      #forgeStartBuild {
+        margin-top: 8px;
+        padding: 8px 14px;
+        border-radius: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #forgeStartBuild:disabled { opacity: 0.4; cursor: not-allowed; }
     </style>
   </head>
   <body>
@@ -362,6 +516,7 @@
         <nav class="tabs" role="tablist">
           <button class="tab" role="tab" aria-selected="true" data-tab="autoloop">Autoloop</button>
           <button class="tab" role="tab" aria-selected="false" data-tab="council">Council</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="forge">Forge</button>
         </nav>
         <div class="grow"></div>
         <small id="status">connected</small>
@@ -370,6 +525,7 @@
       <div class="body">
         <aside class="sidebar">
           <h2 id="sidebarTitle">Runs</h2>
+          <button id="forgeNew" hidden>+ New</button>
           <ul class="runlist" id="runlist"></ul>
         </aside>
 
@@ -402,6 +558,14 @@
           events: [],
           eventSource: null,
         },
+        // forge run detail
+        forge: {
+          runId: null,
+          spec: null,
+          mode: 'interview',
+          currentQuestion: null,
+          eventSource: null,
+        },
       };
 
       const $ = (id) => document.getElementById(id);
@@ -423,7 +587,13 @@
         document.querySelectorAll('.tab').forEach((b) => {
           b.setAttribute('aria-selected', String(b.dataset.tab === tab));
         });
-        $('sidebarTitle').textContent = tab === 'autoloop' ? 'Autoloop runs' : 'Council sessions';
+        $('sidebarTitle').textContent =
+          tab === 'autoloop'
+            ? 'Autoloop runs'
+            : tab === 'council'
+              ? 'Council sessions'
+              : 'Forge apps';
+        $('forgeNew').hidden = tab !== 'forge';
         state.selectedId = null;
         closeStreams();
         renderEmptyMain();
@@ -439,6 +609,10 @@
           state.council.eventSource.close();
           state.council.eventSource = null;
         }
+        if (state.forge.eventSource) {
+          state.forge.eventSource.close();
+          state.forge.eventSource = null;
+        }
         // Reset caches.
         state.autoloop.state = null;
         state.autoloop.plannerLog = [];
@@ -447,6 +621,10 @@
         state.autoloop.pushLog = [];
         state.council.session = null;
         state.council.events = [];
+        state.forge.runId = null;
+        state.forge.spec = null;
+        state.forge.currentQuestion = null;
+        state.forge.mode = 'interview';
       }
 
       function renderEmptyMain() {
@@ -456,10 +634,21 @@
       // ─── List polling ─────────────────────────────────────────────
       async function refreshList() {
         try {
-          const url = state.tab === 'autoloop' ? '/autoloop/list' : '/council/list';
-          const r = await fetch(url);
+          const url =
+            state.tab === 'autoloop'
+              ? '/autoloop/list'
+              : state.tab === 'council'
+                ? '/council/list'
+                : '/ultraapp/list';
+          const opts = state.tab === 'forge' ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' } : {};
+          const r = await fetch(url, opts);
           const j = await r.json();
-          state.runs = state.tab === 'autoloop' ? j.runs || [] : j.councils || [];
+          state.runs =
+            state.tab === 'autoloop'
+              ? j.runs || []
+              : state.tab === 'council'
+                ? j.councils || []
+                : j.runs || [];
           renderList();
           $('status').textContent = 'connected';
         } catch (err) {
@@ -471,9 +660,11 @@
       function renderList() {
         const ul = $('runlist');
         if (state.runs.length === 0) {
+          const noun =
+            state.tab === 'autoloop' ? 'runs' : state.tab === 'council' ? 'councils' : 'apps';
           ul.innerHTML =
             '<li class="empty" style="padding:20px;list-style:none">No active ' +
-            (state.tab === 'autoloop' ? 'runs' : 'councils') +
+            noun +
             '.</li>';
           return;
         }
@@ -489,13 +680,21 @@
                     <span>↑${r.push_log_count}</span>
                   </div>
                 </li>`;
-            } else {
+            } else if (state.tab === 'council') {
               return `
                 <li class="runItem" data-id="${escapeHtml(r.id)}" aria-selected="${r.id === state.selectedId}">
                   <div class="id">${escapeHtml(r.id)}</div>
                   <div class="meta">
                     <span class="badge ${r.status}">${r.status}</span>
                     <span>${r.responses?.length ?? 0} resp</span>
+                  </div>
+                </li>`;
+            } else {
+              return `
+                <li class="runItem" data-id="${escapeHtml(r.runId)}" aria-selected="${r.runId === state.selectedId}">
+                  <div class="id">${escapeHtml(r.title || r.runId)}</div>
+                  <div class="meta">
+                    <span class="badge ${r.mode}">${r.mode}</span>
                   </div>
                 </li>`;
             }
@@ -515,7 +714,216 @@
       function openDetail(id) {
         closeStreams();
         if (state.tab === 'autoloop') openAutoloop(id);
-        else openCouncil(id);
+        else if (state.tab === 'council') openCouncil(id);
+        else openForgeRun(id);
+      }
+
+      // ─── Forge ────────────────────────────────────────────────────
+      $('forgeNew').addEventListener('click', async () => {
+        const r = await fetch('/ultraapp/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          alert('Failed to create run: ' + (j.error || 'unknown'));
+          return;
+        }
+        state.selectedId = j.runId;
+        await refreshList();
+        openForgeRun(j.runId);
+      });
+
+      function renderForgeShell() {
+        $('main').innerHTML = `
+          <div class="forge-layout">
+            <div class="forge-chat">
+              <div class="forge-mode" id="forgeMode" data-mode="interview">interview</div>
+              <div class="forge-messages" id="forgeMessages"></div>
+              <div class="forge-input">
+                <textarea id="forgeFreeform" placeholder="Free-form input (or click an option above and Submit)" rows="2"></textarea>
+                <button id="forgeSubmit">Submit</button>
+              </div>
+              <div class="forge-input-row">
+                <input type="file" id="forgeFile" multiple />
+                <input type="text" id="forgePath" placeholder="…or paste an absolute path" />
+              </div>
+            </div>
+            <div class="forge-spec">
+              <h3>AppSpec</h3>
+              <textarea id="forgeSpecJson" rows="20" spellcheck="false"></textarea>
+              <div class="forge-spec-actions">
+                <button id="forgeSpecApply">Apply edit</button>
+                <span class="forge-spec-msg" id="forgeSpecMsg"></span>
+              </div>
+              <button id="forgeStartBuild" disabled>Start Build (v0.2)</button>
+            </div>
+          </div>
+        `;
+        $('forgeSubmit').addEventListener('click', forgeOnSubmit);
+        $('forgeSpecApply').addEventListener('click', forgeOnSpecApply);
+      }
+
+      async function openForgeRun(runId) {
+        state.forge.runId = runId;
+        renderForgeShell();
+        try {
+          const r = await fetch('/ultraapp/' + encodeURIComponent(runId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          const j = await r.json();
+          if (!j.ok) {
+            $('forgeMessages').textContent = 'error: ' + (j.error || 'unknown');
+            return;
+          }
+          state.forge.spec = j.spec;
+          state.forge.mode = j.state.mode;
+          renderSpec(j.spec);
+          setForgeMode(j.state.mode);
+          for (const e of j.chat || []) renderChatEntry(e);
+        } catch (err) {
+          $('forgeMessages').textContent = 'fetch failed: ' + err.message;
+          return;
+        }
+        const es = new EventSource('/ultraapp/' + encodeURIComponent(runId) + '/events');
+        state.forge.eventSource = es;
+        es.addEventListener('ultraapp', (ev) => {
+          const data = JSON.parse(ev.data);
+          if (data.type === 'question') renderQuestion(data.question);
+          else if (data.type === 'spec-updated') {
+            state.forge.spec = data.spec;
+            renderSpec(data.spec);
+          } else if (data.type === 'chat') renderChatEntry(data.entry);
+          else if (data.type === 'interview-complete') {
+            renderChatEntry({ role: 'system', kind: 'narrator', text: 'Interview complete: ' + data.summary });
+            $('forgeStartBuild').disabled = false;
+          } else if (data.type === 'error') {
+            renderChatEntry({ role: 'system', kind: 'error', text: '[error] ' + data.message });
+          }
+        });
+        es.onerror = () => {
+          /* allow auto-reconnect */
+        };
+      }
+
+      function setForgeMode(m) {
+        state.forge.mode = m;
+        const el = $('forgeMode');
+        if (el) {
+          el.dataset.mode = m;
+          el.textContent = m;
+        }
+      }
+
+      function renderSpec(spec) {
+        const ta = $('forgeSpecJson');
+        if (!ta) return;
+        if (document.activeElement !== ta) {
+          ta.value = JSON.stringify(spec, null, 2);
+        }
+      }
+
+      function renderChatEntry(entry) {
+        const m = $('forgeMessages');
+        if (!m) return;
+        const div = document.createElement('div');
+        div.className = 'forge-msg ' + entry.role;
+        div.textContent = entry.text;
+        m.appendChild(div);
+        m.scrollTop = m.scrollHeight;
+      }
+
+      function renderQuestion(q) {
+        state.forge.currentQuestion = q;
+        const m = $('forgeMessages');
+        if (!m) return;
+        const card = document.createElement('div');
+        card.className = 'forge-question';
+        card.innerHTML =
+          (q.context ? `<div class="ctx">${escapeHtml(q.context)}</div>` : '') +
+          `<div class="q">${escapeHtml(q.question)}</div>` +
+          `<div class="opts">` +
+          q.options
+            .map(
+              (o) =>
+                `<span class="opt ${o.value === q.recommended ? 'recommended' : ''}" data-val="${escapeHtml(o.value)}">${escapeHtml(o.label)}</span>`,
+            )
+            .join('') +
+          `</div>`;
+        card.querySelectorAll('.opt').forEach((el) => {
+          el.addEventListener('click', () => {
+            card.querySelectorAll('.opt').forEach((x) => x.classList.remove('selected'));
+            el.classList.add('selected');
+            state.forge.currentQuestion._selected = el.dataset.val;
+          });
+        });
+        m.appendChild(card);
+        m.scrollTop = m.scrollHeight;
+      }
+
+      async function forgeOnSubmit() {
+        const runId = state.forge.runId;
+        if (!runId) return;
+        const ff = $('forgeFreeform');
+        const path = $('forgePath');
+        const fileInput = $('forgeFile');
+
+        for (const f of fileInput.files) {
+          const buf = await f.arrayBuffer();
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          await fetch('/ultraapp/' + encodeURIComponent(runId) + '/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: f.name, dataB64: b64 }),
+          });
+        }
+        fileInput.value = '';
+
+        if (path.value.trim()) {
+          await fetch('/ultraapp/' + encodeURIComponent(runId) + '/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ absolutePath: path.value.trim() }),
+          });
+          path.value = '';
+        }
+
+        const freeform = ff.value.trim();
+        const selected = state.forge.currentQuestion?._selected;
+        if (freeform || selected) {
+          const body = freeform ? { value: selected ?? '', freeform } : { value: selected };
+          await fetch('/ultraapp/' + encodeURIComponent(runId) + '/answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          ff.value = '';
+          state.forge.currentQuestion = null;
+        }
+      }
+
+      async function forgeOnSpecApply() {
+        const runId = state.forge.runId;
+        if (!runId) return;
+        const msg = $('forgeSpecMsg');
+        msg.textContent = '';
+        let next;
+        try {
+          next = JSON.parse($('forgeSpecJson').value);
+        } catch (e) {
+          msg.textContent = 'JSON parse error: ' + e.message;
+          return;
+        }
+        const r = await fetch('/ultraapp/' + encodeURIComponent(runId) + '/spec-edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ patch: [{ op: 'replace', path: '', value: next }] }),
+        });
+        const j = await r.json();
+        msg.textContent = j.ok ? 'Saved.' : 'Error: ' + (j.error ?? 'unknown');
       }
 
       // ─── Autoloop detail ──────────────────────────────────────────
