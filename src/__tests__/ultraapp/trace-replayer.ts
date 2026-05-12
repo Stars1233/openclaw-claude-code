@@ -54,16 +54,30 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
   }
   let extractIdx = 0;
 
-  let i = 0;
+  let consumed = 0;
   const sm = {
     startSession: vi
       .fn()
       .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'replay' })),
     sendMessage: vi
       .fn()
-      .mockImplementation(async () => ({ output: replies[i++] ?? '[INTERVIEW: COMPLETE]' })),
+      .mockImplementation(async () => ({
+        output: replies[consumed++] ?? '[INTERVIEW: COMPLETE]',
+      })),
     stopSession: vi.fn().mockResolvedValue(undefined),
   };
+
+  /** Drain until either the reply queue is exhausted (consumed >= target)
+      or a deadline elapses. driveTurn is fire-and-forget for tool-followup
+      chains; we need many drain cycles so each chained sendMessage gets a
+      chance to grab its slot. */
+  async function drainUntil(targetConsumed: number, deadlineMs = 1500): Promise<void> {
+    const start = Date.now();
+    while (consumed < targetConsumed && Date.now() - start < deadlineMs) {
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  }
 
   const store = new UltraappStore(storeRoot);
   // Inline-stub extractMetadata via a custom files import isn't easy without
@@ -76,12 +90,30 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
   void extractResults;
   void extractIdx;
 
+  // Pre-compute consumed targets: how many replies should have been served
+  // by the time we move past each user-* entry. createRun's KICKOFF eats the
+  // leading claude-* run; each user action eats the following claude-* run.
+  const targets: number[] = [];
+  let claudeAcc = 0;
+  let firstUserSeen = false;
+  for (const e of entries) {
+    if (e.kind.startsWith('claude-')) {
+      claudeAcc++;
+    } else if (e.kind.startsWith('user-')) {
+      targets.push(claudeAcc);
+      firstUserSeen = true;
+    }
+  }
+  // Total replies that exist for final drain.
+  const totalReplies = claudeAcc;
+
   const mgr = new UltraappManager({ store, sessionManager: sm as never });
   const runId = await mgr.createRun();
+  // Drain the kickoff replies (claude-* before any user action)
+  const kickoffTarget = firstUserSeen ? targets[0] : totalReplies;
+  await drainUntil(Math.min(kickoffTarget, totalReplies));
 
-  // Walk the trace and execute user actions. Allow microtasks to flush
-  // between actions so driveTurn-spawned tool followups consume their
-  // reply slots before the next user action.
+  let userIdx = 0;
   for (const e of entries) {
     if (e.kind === 'user-answer') {
       await mgr.submitAnswer(runId, {
@@ -94,15 +126,15 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
     } else if (e.kind === 'user-path') {
       await mgr.addFile(runId, { kind: 'path', absolutePath: e.absolutePath as string });
     } else {
-      // claude-* entries are passive (consumed by sendMessage). Just yield.
+      continue;
     }
-    // Drain microtasks so the chained driveTurn → tool → driveTurn sequence
-    // consumes its reply slots before the next user action.
-    for (let k = 0; k < 5; k++) await new Promise((r) => setImmediate(r));
+    userIdx++;
+    const next = userIdx < targets.length ? targets[userIdx] : totalReplies;
+    await drainUntil(next);
   }
 
-  // Final drain so the closing complete reply (if any) lands on disk.
-  for (let k = 0; k < 5; k++) await new Promise((r) => setImmediate(r));
+  // Final drain for any trailing claude-* entries past the last user action.
+  await drainUntil(totalReplies);
 
   const specJson = JSON.parse(
     fs.readFileSync(path.join(store.runDirAbsolute(runId), 'spec.json'), 'utf8'),
