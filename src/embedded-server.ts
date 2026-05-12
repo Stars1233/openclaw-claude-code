@@ -657,6 +657,99 @@ export class EmbeddedServer {
         return;
       }
 
+      // ─── ultraapp ─────────────────────────────────────────────
+      // Forge-tab routes. The events endpoint is SSE; the rest return JSON.
+
+      const uaSseMatch = path.match(/^\/ultraapp\/([^/]+)\/events$/);
+      if (uaSseMatch) {
+        const runId = uaSseMatch[1];
+        const ua = this.manager.getUltraappManager?.();
+        if (!ua) {
+          json(404, { ok: false, error: 'ultraapp manager unavailable' });
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        let unsub: (() => void) | null = null;
+        try {
+          unsub = ua.subscribe(runId, (ev: unknown) => {
+            res.write(`event: ultraapp\n`);
+            res.write(`data: ${JSON.stringify(ev)}\n\n`);
+          });
+        } catch (e) {
+          res.write(`event: error\n`);
+          res.write(`data: ${JSON.stringify({ message: (e as Error).message })}\n\n`);
+          res.end();
+          return;
+        }
+        res.on('close', () => unsub?.());
+        return;
+      }
+
+      const uaMatch = path.match(/^\/ultraapp(?:\/([^/]+))?(?:\/([^/]+))?$/);
+      if (uaMatch) {
+        const ua = this.manager.getUltraappManager?.();
+        if (!ua) {
+          json(404, { ok: false, error: 'ultraapp manager unavailable' });
+          return;
+        }
+        const seg1 = uaMatch[1];
+        const seg2 = uaMatch[2];
+
+        if (seg1 === 'list' && !seg2) {
+          const runs = await ua.store.listRuns();
+          json(200, { ok: true, runs });
+          return;
+        }
+        if (seg1 === 'new' && !seg2) {
+          const runId = await ua.createRun();
+          json(200, { ok: true, runId });
+          return;
+        }
+        if (seg1 && !seg2) {
+          try {
+            const [spec, chat, state] = await Promise.all([
+              ua.store.readSpec(seg1),
+              ua.store.readChat(seg1),
+              ua.store.readState(seg1),
+            ]);
+            json(200, { ok: true, spec, chat, state });
+          } catch (e) {
+            json(404, { ok: false, error: (e as Error).message });
+          }
+          return;
+        }
+        if (seg1 && seg2 === 'answer') {
+          await ua.submitAnswer(seg1, body as { value: string; freeform?: string });
+          json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'spec-edit') {
+          await ua.applySpecEdit(seg1, (body as { patch: unknown[] }).patch as never);
+          json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'files') {
+          const b = body as Record<string, unknown>;
+          if (typeof b.absolutePath === 'string') {
+            const r = await ua.addFile(seg1, { kind: 'path', absolutePath: b.absolutePath });
+            json(200, { ok: true, ...r });
+            return;
+          }
+          if (typeof b.filename === 'string' && typeof b.dataB64 === 'string') {
+            const data = Buffer.from(b.dataB64, 'base64');
+            const r = await ua.addFile(seg1, { kind: 'upload', filename: b.filename, data });
+            json(200, { ok: true, ...r });
+            return;
+          }
+          json(400, { ok: false, error: 'must provide absolutePath OR filename+dataB64' });
+          return;
+        }
+      }
+
       // Use OpenAI error format for /v1/* paths
       if (path.startsWith('/v1/')) {
         json(404, { error: { message: 'Not found', type: 'invalid_request_error', code: null } });

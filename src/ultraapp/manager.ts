@@ -53,6 +53,10 @@ export class UltraappManager {
     this.skillContent = loadSkill(opts.skillPath);
   }
 
+  get store(): UltraappStore {
+    return this.opts.store;
+  }
+
   async createRun(): Promise<string> {
     const runId = await this.opts.store.createRun();
     const sessionName = `ultraapp-${runId}`;
