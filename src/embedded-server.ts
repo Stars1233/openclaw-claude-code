@@ -763,6 +763,26 @@ export class EmbeddedServer {
           json(r.ok ? 200 : 500, r);
           return;
         }
+        if (seg1 && seg2 === 'feedback' && !seg3) {
+          const t = (body as { text?: string }).text;
+          if (typeof t !== 'string' || !t.trim()) {
+            json(400, { ok: false, error: 'text required' });
+            return;
+          }
+          await ua.submitDoneModeMessage(seg1, t);
+          json(200, { ok: true });
+          return;
+        }
+        if (seg1 && seg2 === 'promote-version' && !seg3) {
+          const v = (body as { version?: string }).version;
+          if (typeof v !== 'string' || !/^v\d+$/.test(v)) {
+            json(400, { ok: false, error: 'version (vN) required' });
+            return;
+          }
+          const r = await ua.promoteVersion(seg1, v);
+          json(r.ok ? 200 : 500, r);
+          return;
+        }
         if (seg1 && seg2 === 'files') {
           const b = body as Record<string, unknown>;
           if (typeof b.absolutePath === 'string') {

@@ -62,6 +62,8 @@ function fakeManager() {
       startContainer: vi.fn().mockResolvedValue({ ok: true }),
       stopContainer: vi.fn().mockResolvedValue({ ok: true }),
       deleteRun: vi.fn().mockResolvedValue({ ok: true }),
+      submitDoneModeMessage: vi.fn().mockResolvedValue(undefined),
+      promoteVersion: vi.fn().mockResolvedValue({ ok: true }),
       subscribe: vi.fn().mockImplementation((_id: string, listener: (ev: unknown) => void) => {
         emitter.on('event', listener);
         return () => emitter.off('event', listener);
@@ -171,5 +173,33 @@ describe('ultraapp routes', () => {
     const r = await request(port, '/ultraapp/ua-test-1/delete', { body: {} });
     expect(r.status).toBe(200);
     expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/feedback accepts done-mode text', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/feedback', {
+      body: { text: 'make button green' },
+    });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/feedback rejects empty text', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/feedback', { body: {} });
+    expect(r.status).toBe(400);
+  });
+
+  it('POST /ultraapp/<id>/promote-version accepts a vN target', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/promote-version', {
+      body: { version: 'v2' },
+    });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/promote-version rejects bad version format', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/promote-version', {
+      body: { version: 'not-a-version' },
+    });
+    expect(r.status).toBe(400);
   });
 });
