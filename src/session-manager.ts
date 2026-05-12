@@ -158,6 +158,8 @@ import type { AutoloopState, PushPolicy } from './autoloop/types.js';
 import { DEFAULT_PUSH_POLICY } from './autoloop/types.js';
 import { Msg as AutoloopMsg, type PushChannel, type PushLevel } from './autoloop/messages.js';
 import { appendPushLog, notifyUserFallbackChain } from './autoloop/notify.js';
+import { UltraappManager } from './ultraapp/manager.js';
+import { UltraappStore, defaultStoreRoot } from './ultraapp/store.js';
 import {
   PERSIST_DISK_TTL_MS,
   DEBOUNCED_SAVE_MS,
@@ -216,6 +218,7 @@ export class SessionManager {
   private _circuitBreaker = new CircuitBreaker();
   private _inbox = new InboxManager();
   private logger: Logger;
+  private _ultraappManager: UltraappManager | null = null;
 
   constructor(config?: Partial<PluginConfig>, logger?: Logger) {
     this.logger = logger || createConsoleLogger('SessionManager');
@@ -245,6 +248,21 @@ export class SessionManager {
 
     // Start TTL cleanup timer
     this.cleanupTimer = setInterval(() => this._cleanupIdleSessions(), CLEANUP_INTERVAL_MS);
+  }
+
+  /**
+   * Lazily-constructed ultraapp manager. The ultraapp manager itself uses
+   * `this` as its session-manager dependency; building it lazily avoids any
+   * circular initialisation concerns.
+   */
+  getUltraappManager(): UltraappManager {
+    if (!this._ultraappManager) {
+      this._ultraappManager = new UltraappManager({
+        store: new UltraappStore(defaultStoreRoot()),
+        sessionManager: this,
+      });
+    }
+    return this._ultraappManager;
   }
 
   // ─── Session Lifecycle ─────────────────────────────────────────────────
