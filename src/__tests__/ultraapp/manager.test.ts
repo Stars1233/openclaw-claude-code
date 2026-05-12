@@ -270,9 +270,7 @@ describe('UltraappManager', () => {
     // Stub the patcher to return a valid diff via session sendMessage replies.
     // We replace the canned reply between calls.
     const patcherMod = await import('../../ultraapp/patcher.js');
-    const spy = vi
-      .spyOn(patcherMod, 'runPatcher')
-      .mockResolvedValue({ ok: true, newWorktreePath: wt });
+    const spy = vi.spyOn(patcherMod, 'runPatcher').mockResolvedValue({ ok: true, newWorktreePath: wt });
 
     await mgr.submitDoneModeMessage(id, 'make button green');
     await new Promise((r) => setTimeout(r, 50));
@@ -307,9 +305,7 @@ describe('UltraappManager', () => {
     await mgr.submitDoneModeMessage(id, 'this is a totally different app');
     await new Promise((r) => setTimeout(r, 50));
     const chat = await store.readChat(id);
-    const narration = chat.find(
-      (e) => e.kind === 'narrator' && /\+ New|fresh ultraapp/i.test(e.text),
-    );
+    const narration = chat.find((e) => e.kind === 'narrator' && /\+ New|fresh ultraapp/i.test(e.text));
     expect(narration).toBeTruthy();
     // Mode unchanged
     const s = await store.readState(id);

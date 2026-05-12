@@ -31,7 +31,10 @@ export interface PatcherResult {
   newWorktreePath?: string;
 }
 
-const PATCHER_PROMPT = (codebaseSummary: string, feedback: string) => `You are the ultraapp patcher. The user has an already-deployed web app and
+const PATCHER_PROMPT = (
+  codebaseSummary: string,
+  feedback: string,
+) => `You are the ultraapp patcher. The user has an already-deployed web app and
 wants a small change. Your task: produce a unified diff (the exact format git
 diff produces, with --- a/ and +++ b/ headers) that implements the user's
 request.

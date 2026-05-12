@@ -23,10 +23,7 @@ describe('startSpecDeltaInterview', () => {
     const spec = makeEmptySpec('ua-1');
     spec.meta.name = 'demo';
     await startSpecDeltaInterview(manager as never, 'ua-1', 'add thumbnail', spec);
-    expect(manager.injectSystemMessage).toHaveBeenCalledWith(
-      'ua-1',
-      expect.stringMatching(/add thumbnail/),
-    );
+    expect(manager.injectSystemMessage).toHaveBeenCalledWith('ua-1', expect.stringMatching(/add thumbnail/));
     expect(manager.setModeForDelta).toHaveBeenCalledWith('ua-1');
   });
 });

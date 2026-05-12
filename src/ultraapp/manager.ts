@@ -447,12 +447,7 @@ export class UltraappManager {
     return this.opts.sessionManager.sendMessage(sessionName, prompt);
   }
 
-  private async routeFeedback(
-    runId: string,
-    klass: FeedbackClass,
-    text: string,
-    spec: AppSpec,
-  ): Promise<void> {
+  private async routeFeedback(runId: string, klass: FeedbackClass, text: string, spec: AppSpec): Promise<void> {
     const run = this.requireRun(runId);
     if (klass === 'cosmetic') {
       await this.runPatcherFlow(runId, text);
@@ -463,8 +458,7 @@ export class UltraappManager {
       return;
     }
     // structural
-    const note =
-      'This sounds like a different app entirely. Click + New in the sidebar to start a fresh ultraapp run.';
+    const note = 'This sounds like a different app entirely. Click + New in the sidebar to start a fresh ultraapp run.';
     await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text: note });
     this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text: note } });
   }

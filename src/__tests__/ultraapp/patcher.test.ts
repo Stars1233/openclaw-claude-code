@@ -47,8 +47,7 @@ describe('runPatcher', () => {
 
   it('fails when diff cannot apply (conflict)', async () => {
     const llmCall = vi.fn().mockResolvedValue({
-      output:
-        '```diff\n--- a/app.css\n+++ b/app.css\n@@ -1,1 +1,1 @@\n-NOT THE FILE CONTENT\n+something\n```',
+      output: '```diff\n--- a/app.css\n+++ b/app.css\n@@ -1,1 +1,1 @@\n-NOT THE FILE CONTENT\n+something\n```',
     });
     const validate = vi.fn();
     const r = await runPatcher({

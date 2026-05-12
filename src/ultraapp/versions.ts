@@ -32,9 +32,10 @@ export function listVersions(versionsDir: string): VersionEntry[] {
   const out: VersionEntry[] = [];
   for (const v of fs.readdirSync(versionsDir)) {
     try {
-      const a = JSON.parse(
-        fs.readFileSync(path.join(versionsDir, v, 'artifact.json'), 'utf8'),
-      ) as Omit<VersionEntry, 'version'>;
+      const a = JSON.parse(fs.readFileSync(path.join(versionsDir, v, 'artifact.json'), 'utf8')) as Omit<
+        VersionEntry,
+        'version'
+      >;
       out.push({ version: v, ...a });
     } catch {
       /* skip non-version dirs */
@@ -49,10 +50,7 @@ function parseVersionNumber(version: string): number {
   return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
-export function snapshotVersion(
-  versionsDir: string,
-  args: { worktreePath: string; source: string },
-): string {
+export function snapshotVersion(versionsDir: string, args: { worktreePath: string; source: string }): string {
   fs.mkdirSync(versionsDir, { recursive: true });
   const existing = listVersions(versionsDir);
   const next = `v${existing.length + 1}`;
