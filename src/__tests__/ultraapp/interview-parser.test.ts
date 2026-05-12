@@ -21,8 +21,7 @@ describe('parseInterviewReply', () => {
   });
 
   it('detects [INTERVIEW: COMPLETE] marker', () => {
-    const reply =
-      'Spec summary:\n- inputs: video\n- outputs: clip\n\n[INTERVIEW: COMPLETE]';
+    const reply = 'Spec summary:\n- inputs: video\n- outputs: clip\n\n[INTERVIEW: COMPLETE]';
     const r = parseInterviewReply(reply);
     expect(r.kind).toBe('complete');
   });

@@ -56,18 +56,13 @@ export function parseInterviewReply(reply: string): ParsedReply {
   return { kind: 'text', text: reply.trim() };
 }
 
-function validateQuestion(
-  x: unknown,
-): { ok: true; value: QuestionEnvelope } | { ok: false; reason: string } {
+function validateQuestion(x: unknown): { ok: true; value: QuestionEnvelope } | { ok: false; reason: string } {
   if (!x || typeof x !== 'object') return { ok: false, reason: 'envelope is not an object' };
   const o = x as Record<string, unknown>;
-  if (typeof o.question !== 'string' || o.question.length === 0)
-    return { ok: false, reason: 'missing .question' };
-  if (!Array.isArray(o.options) || o.options.length < 1)
-    return { ok: false, reason: 'missing .options' };
+  if (typeof o.question !== 'string' || o.question.length === 0) return { ok: false, reason: 'missing .question' };
+  if (!Array.isArray(o.options) || o.options.length < 1) return { ok: false, reason: 'missing .options' };
   for (const opt of o.options) {
-    if (!opt || typeof opt !== 'object')
-      return { ok: false, reason: 'option is not an object' };
+    if (!opt || typeof opt !== 'object') return { ok: false, reason: 'option is not an object' };
     const oo = opt as Record<string, unknown>;
     if (typeof oo.label !== 'string' || typeof oo.value !== 'string') {
       return { ok: false, reason: 'option missing label/value' };

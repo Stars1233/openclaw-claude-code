@@ -9,9 +9,7 @@ describe('validateLocalPath', () => {
   const allow = [fakeHome, '/tmp'];
 
   it('accepts a path under HOME', () => {
-    expect(() =>
-      validateLocalPath('/Users/alice/Movies/raw.mp4', { allow }),
-    ).not.toThrow();
+    expect(() => validateLocalPath('/Users/alice/Movies/raw.mp4', { allow })).not.toThrow();
   });
 
   it('accepts a path under /tmp', () => {
@@ -23,9 +21,7 @@ describe('validateLocalPath', () => {
   });
 
   it('rejects paths containing /. segments (~/.ssh)', () => {
-    expect(() =>
-      validateLocalPath('/Users/alice/.ssh/id_rsa', { allow }),
-    ).toThrow(/dotfile/i);
+    expect(() => validateLocalPath('/Users/alice/.ssh/id_rsa', { allow })).toThrow(/dotfile/i);
   });
 
   it('rejects relative paths', () => {
@@ -34,9 +30,7 @@ describe('validateLocalPath', () => {
 
   it('rejects symlinks (via lstat injection)', () => {
     const lstat = vi.fn().mockReturnValue({ isSymbolicLink: () => true });
-    expect(() =>
-      validateLocalPath('/Users/alice/foo', { allow, lstat }),
-    ).toThrow(/symlink/i);
+    expect(() => validateLocalPath('/Users/alice/foo', { allow, lstat })).toThrow(/symlink/i);
   });
 });
 
@@ -68,8 +62,7 @@ describe('ingestUpload', () => {
 describe('extractMetadata', () => {
   it('returns shell tool output when binary present', async () => {
     const fakeRunner = vi.fn(async (cmd: string) => {
-      if (cmd === 'file')
-        return { ok: true, stdout: 'sample.mp4: ISO Media, MP4 Base Media v1' };
+      if (cmd === 'file') return { ok: true, stdout: 'sample.mp4: ISO Media, MP4 Base Media v1' };
       if (cmd === 'ffprobe') return { ok: true, stdout: '{"format":{"duration":"180"}}' };
       return { ok: false, stdout: '' };
     });

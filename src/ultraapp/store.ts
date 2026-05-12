@@ -92,10 +92,7 @@ export class UltraappStore {
     state.mode = mode;
     state.updatedAt = new Date().toISOString();
     if (failure !== undefined) state.failure = failure;
-    await fsp.writeFile(
-      path.join(this.runDir(runId), 'state.json'),
-      JSON.stringify(state, null, 2),
-    );
+    await fsp.writeFile(path.join(this.runDir(runId), 'state.json'), JSON.stringify(state, null, 2));
   }
 
   async readSpec(runId: string): Promise<AppSpec> {
@@ -103,11 +100,7 @@ export class UltraappStore {
     return JSON.parse(raw) as AppSpec;
   }
 
-  async writeSpec(
-    runId: string,
-    spec: AppSpec,
-    source: SpecHistoryEntry['source'] = 'interview',
-  ): Promise<void> {
+  async writeSpec(runId: string, spec: AppSpec, source: SpecHistoryEntry['source'] = 'interview'): Promise<void> {
     spec.updatedAt = new Date().toISOString();
     validateAppSpec(spec);
     const dir = this.runDir(runId);

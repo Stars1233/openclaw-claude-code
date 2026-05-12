@@ -1268,8 +1268,7 @@ const plugin = {
 
     api.registerTool({
       name: 'ultraapp_get',
-      description:
-        'Get the AppSpec, chat history, and state for one ultraapp run. Pass `runId` from ultraapp_list.',
+      description: 'Get the AppSpec, chat history, and state for one ultraapp run. Pass `runId` from ultraapp_list.',
       parameters: {
         type: 'object',
         properties: { runId: { type: 'string' } },
@@ -1289,8 +1288,7 @@ const plugin = {
 
     api.registerTool({
       name: 'ultraapp_status',
-      description:
-        'Get the run state (mode, failure reason if any) for one ultraapp run. Cheap; no chat or spec data.',
+      description: 'Get the run state (mode, failure reason if any) for one ultraapp run. Cheap; no chat or spec data.',
       parameters: {
         type: 'object',
         properties: { runId: { type: 'string' } },

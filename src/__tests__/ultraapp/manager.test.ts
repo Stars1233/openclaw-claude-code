@@ -66,9 +66,7 @@ describe('UltraappManager', () => {
     let i = 0;
     const sm = {
       startSession: vi.fn().mockResolvedValue({ name: 'ultraapp-r1' }),
-      sendMessage: vi
-        .fn()
-        .mockImplementation(async () => ({ output: replies[i++], requestId: `r${i}` })),
+      sendMessage: vi.fn().mockImplementation(async () => ({ output: replies[i++], requestId: `r${i}` })),
       stopSession: vi.fn().mockResolvedValue(undefined),
     };
     const mgr = new UltraappManager({ store, sessionManager: sm as never });

@@ -13,11 +13,8 @@ export interface PathValidationOptions {
 
 export function validateLocalPath(p: string, opts: PathValidationOptions): void {
   if (!path.isAbsolute(p)) throw new Error('path must be absolute');
-  if (p.includes('/.') || p.startsWith('.'))
-    throw new Error('dotfile/dotdir paths are not allowed');
-  const inside = opts.allow.some(
-    (root) => p === root || p.startsWith(root + path.sep) || p.startsWith(root + '/'),
-  );
+  if (p.includes('/.') || p.startsWith('.')) throw new Error('dotfile/dotdir paths are not allowed');
+  const inside = opts.allow.some((root) => p === root || p.startsWith(root + path.sep) || p.startsWith(root + '/'));
   if (!inside) throw new Error(`path outside sandbox: ${opts.allow.join(', ')}`);
   const lstat = opts.lstat ?? ((q: string) => fs.lstatSync(q));
   let info;
@@ -37,11 +34,7 @@ export function defaultAllowedRoots(): string[] {
   return allow;
 }
 
-export async function ingestUpload(
-  examplesDir: string,
-  filename: string,
-  data: Buffer,
-): Promise<string> {
+export async function ingestUpload(examplesDir: string, filename: string, data: Buffer): Promise<string> {
   if (data.byteLength > MAX_UPLOAD_BYTES) {
     throw new Error(`upload too large (${data.byteLength} bytes, max ${MAX_UPLOAD_BYTES})`);
   }
@@ -76,10 +69,7 @@ export interface FileMetadata {
   sizeBytes?: number;
 }
 
-export async function extractMetadata(
-  p: string,
-  opts: ExtractMetaOptions = {},
-): Promise<FileMetadata> {
+export async function extractMetadata(p: string, opts: ExtractMetaOptions = {}): Promise<FileMetadata> {
   const runner = opts.runner ?? realRunner;
   const meta: FileMetadata = {};
   try {
@@ -93,15 +83,7 @@ export async function extractMetadata(
     const m = fileRes.stdout.trim();
     meta.fileType = m.includes(': ') ? m.slice(m.indexOf(': ') + 2) : m;
   }
-  const ffRes = await runner('ffprobe', [
-    '-v',
-    'quiet',
-    '-print_format',
-    'json',
-    '-show_format',
-    '-show_streams',
-    p,
-  ]);
+  const ffRes = await runner('ffprobe', ['-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', p]);
   if (ffRes.ok && ffRes.stdout.trim().length > 0) {
     try {
       meta.ffprobe = JSON.parse(ffRes.stdout);

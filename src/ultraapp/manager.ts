@@ -6,7 +6,12 @@ import { type AppSpec } from './spec.js';
 import { type UltraappStore, type ChatEntry } from './store.js';
 import { parseInterviewReply, type QuestionEnvelope } from './interview-parser.js';
 import { runToolCalls } from './interview-tools.js';
-import { extractMetadata as defaultExtractMetadata, ingestUpload, validateLocalPath, defaultAllowedRoots } from './files.js';
+import {
+  extractMetadata as defaultExtractMetadata,
+  ingestUpload,
+  validateLocalPath,
+  defaultAllowedRoots,
+} from './files.js';
 import { applyPatch, type PatchOp } from './json-patch.js';
 
 export type RunEvent =
@@ -42,8 +47,7 @@ interface ActiveRun {
   emitter: EventEmitter;
 }
 
-const SESSION_KICKOFF =
-  'Begin the ultraapp interview now. Ask the first question per the skill contract.';
+const SESSION_KICKOFF = 'Begin the ultraapp interview now. Ask the first question per the skill contract.';
 
 export class UltraappManager {
   private readonly runs = new Map<string, ActiveRun>();
@@ -74,10 +78,7 @@ export class UltraappManager {
     return runId;
   }
 
-  async submitAnswer(
-    runId: string,
-    answer: { value: string; freeform?: string },
-  ): Promise<void> {
+  async submitAnswer(runId: string, answer: { value: string; freeform?: string }): Promise<void> {
     const run = this.requireRun(runId);
     const text = answer.freeform ? answer.freeform : `I picked: ${answer.value}`;
     await this.opts.store.appendChat(runId, { role: 'user', kind: 'answer', text });
@@ -99,9 +100,7 @@ export class UltraappManager {
 
   async addFile(
     runId: string,
-    args:
-      | { kind: 'upload'; filename: string; data: Buffer }
-      | { kind: 'path'; absolutePath: string },
+    args: { kind: 'upload'; filename: string; data: Buffer } | { kind: 'path'; absolutePath: string },
   ): Promise<{ ref: string }> {
     const run = this.requireRun(runId);
     let ref: string;
@@ -117,10 +116,7 @@ export class UltraappManager {
       text: `[file added] ${path.basename(ref)}`,
       payload: { ref },
     });
-    void this.driveTurn(
-      run,
-      `[system] User added file: ${ref}. You may call extract_metadata.`,
-    );
+    void this.driveTurn(run, `[system] User added file: ${ref}. You may call extract_metadata.`);
     return { ref };
   }
 
@@ -147,9 +143,7 @@ export class UltraappManager {
         const followup = results
           .map(
             (r) =>
-              `<tool_result name="${r.name}">${
-                r.ok ? JSON.stringify(r.result) : `ERROR: ${r.error}`
-              }</tool_result>`,
+              `<tool_result name="${r.name}">${r.ok ? JSON.stringify(r.result) : `ERROR: ${r.error}`}</tool_result>`,
           )
           .join('\n');
         void this.driveTurn(run, followup);
