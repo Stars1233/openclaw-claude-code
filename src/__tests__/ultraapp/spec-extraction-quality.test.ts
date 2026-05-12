@@ -27,9 +27,7 @@ for (const trace of TRACES) {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `ua-trace-${trace}-`));
       try {
         const file = path.join(FIXTURES, `${trace}.jsonl`);
-        const expected = JSON.parse(
-          fs.readFileSync(path.join(FIXTURES, 'expected', `${trace}.appspec.json`), 'utf8'),
-        );
+        const expected = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'expected', `${trace}.appspec.json`), 'utf8'));
         const { specJson } = await replayTrace(file, tmp);
         expect(stripVolatile(specJson)).toEqual(stripVolatile(expected));
       } finally {

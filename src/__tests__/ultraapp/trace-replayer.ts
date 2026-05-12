@@ -44,15 +44,6 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
     }
   }
 
-  // Pre-loaded extract_metadata results, keyed by call order
-  const extractResults: unknown[] = [];
-  for (const e of entries) {
-    if (e.kind === 'claude-tool' && e.tool === 'extract_metadata' && e.result !== undefined) {
-      extractResults.push(e.result);
-    }
-  }
-  let extractIdx = 0;
-
   let consumed = 0;
   const sm = {
     startSession: async (cfg: { name?: string }) => ({ name: cfg.name ?? 'replay' }),
@@ -75,15 +66,10 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
   }
 
   const store = new UltraappStore(storeRoot);
-  // Inline-stub extractMetadata via a custom files import isn't easy without
-  // refactoring the manager. For replay traces that need extract_metadata
-  // results, we monkey-patch via the manager's testing seam: the trace
-  // currently embeds extract results, but the real implementation reads from
-  // disk. We rely on the manager's existing default extractMetadata, which
-  // for path-ref entries calls ffprobe. For unit-tests we stub via files.ts
-  // (see future work).
-  void extractResults;
-  void extractIdx;
+  // Note: extract_metadata calls fall through to the manager's default
+  // implementation (file probe / ffprobe). Traces that need stubbed metadata
+  // results should attach those results inside the trace's `claude-tool`
+  // entries; richer wiring is a future-work item.
 
   // Pre-compute consumed targets: how many replies should have been served
   // by the time we move past each user-* entry. createRun's KICKOFF eats the
@@ -131,9 +117,7 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
   // Final drain for any trailing claude-* entries past the last user action.
   await drainUntil(totalReplies);
 
-  const specJson = JSON.parse(
-    fs.readFileSync(path.join(store.runDirAbsolute(runId), 'spec.json'), 'utf8'),
-  );
+  const specJson = JSON.parse(fs.readFileSync(path.join(store.runDirAbsolute(runId), 'spec.json'), 'utf8'));
   return { runId, specJson };
 }
 
