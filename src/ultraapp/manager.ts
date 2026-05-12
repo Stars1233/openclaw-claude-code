@@ -22,6 +22,7 @@ import { deployArtifact, type DeployArgs, type DeployResult } from './deploy.js'
 import { dockerBuild, dockerRun, dockerRmi } from './docker.js';
 import { startContainerAndRegister, stopContainerAndDeregister, deleteContainerAndDeregister } from './lifecycle.js';
 import type { UltraappRouter } from './router.js';
+import { Narrator } from './narrator.js';
 
 export type RunEvent =
   | { type: 'question'; question: QuestionEnvelope }
@@ -70,6 +71,7 @@ export class UltraappManager {
   private readonly runs = new Map<string, ActiveRun>();
   private readonly skillContent: string;
   private readonly buildQueue: UltraappBuildQueue;
+  private readonly narrators = new Map<string, Narrator>();
 
   constructor(private readonly opts: UltraappManagerOptions) {
     this.skillContent = loadSkill(opts.skillPath);
@@ -167,6 +169,30 @@ export class UltraappManager {
 
   private async runBuild(runId: string, emit: (e: BuildEvent) => void): Promise<void> {
     await this.opts.store.setMode(runId, 'building');
+
+    // Start the narrator before any build event fires so onBuildEvent can
+    // push synchronously without racing async session-spawn. Best-effort —
+    // narrator failure shouldn't sink the build.
+    const language = detectLanguage(await this.opts.store.readChat(runId));
+    const run = this.runs.get(runId);
+    if (run) {
+      const n = new Narrator({
+        runId,
+        sessionManager: this.opts.sessionManager,
+        language,
+        onChat: (text) => {
+          void this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text });
+          this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text } });
+        },
+      });
+      this.narrators.set(runId, n);
+      try {
+        await n.start();
+      } catch {
+        this.narrators.delete(runId);
+      }
+    }
+
     emit({ type: 'build-start', runId });
     const spec = await this.opts.store.readSpec(runId);
     const runDir = this.opts.store.runDirAbsolute(runId);
@@ -322,10 +348,22 @@ export class UltraappManager {
   private onBuildEvent(ev: BuildEvent): void {
     const run = this.runs.get(ev.runId);
     if (!run) return;
-    const text = describeBuildEvent(ev);
-    void this.opts.store.appendChat(ev.runId, { role: 'system', kind: 'narrator', text });
-    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text } });
+    // Always emit raw event for the dashboard mode pill.
     this.emit(run, { type: 'build-event', event: ev });
+    // Push to the narrator (started in runBuild). The narrator owns chat
+    // narration now — no raw-line writes from this handler.
+    const narrator = this.narrators.get(ev.runId);
+    if (narrator) narrator.push(ev);
+
+    // Tear down narrator on terminal events. push() above already triggered
+    // its urgent flush, so by the time we stop() any final summary is queued.
+    if (ev.type === 'build-complete' || ev.type === 'build-failed' || ev.type === 'build-cancelled') {
+      const n = this.narrators.get(ev.runId);
+      if (n) {
+        this.narrators.delete(ev.runId);
+        void n.stop();
+      }
+    }
   }
 
   private async driveTurn(run: ActiveRun, message: string): Promise<void> {
@@ -403,29 +441,13 @@ export class UltraappManager {
   }
 }
 
-function describeBuildEvent(ev: BuildEvent): string {
-  switch (ev.type) {
-    case 'queued':
-      return `Queued (position ${ev.position}).`;
-    case 'build-start':
-      return 'Build started — dispatching council.';
-    case 'council-round':
-      return `Council round ${ev.round}: ${ev.agentName} ${ev.vote ? 'voted ' + ev.vote : 'thinking'}.`;
-    case 'council-consensus':
-      return `Council consensus reached after ${ev.rounds} rounds.`;
-    case 'fix-start':
-      return 'Running build/test/docker checks; will fix on failure.';
-    case 'fix-round':
-      return `Fix round ${ev.round}: failing on \`${ev.failingCommand}\`.`;
-    case 'fix-complete':
-      return `Build green after ${ev.rounds} fix round(s).`;
-    case 'build-complete':
-      return `Build complete. Codebase at ${ev.worktreePath}.`;
-    case 'build-failed':
-      return `Build FAILED in ${ev.phase}: ${ev.reason}`;
-    case 'build-cancelled':
-      return 'Build cancelled.';
+function detectLanguage(chat: ChatEntry[]): 'zh' | 'en' {
+  for (const e of chat) {
+    if (e.role !== 'user') continue;
+    if (/[一-龥]/.test(e.text)) return 'zh';
+    return 'en';
   }
+  return 'en';
 }
 
 function loadSkill(skillPath?: string): string {

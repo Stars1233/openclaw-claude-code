@@ -14,7 +14,11 @@ function fakeSessionManager(reply: string) {
     send: vi.fn().mockResolvedValue({ output: reply, requestId: 'r' }),
   };
   return {
-    startSession: vi.fn().mockResolvedValue({ name: 'ultraapp-r1' }),
+    // Echo the requested session name so narrator-<runId> doesn't collide
+    // with the interview session's name.
+    startSession: vi
+      .fn()
+      .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
     sendMessage: (_name: string, msg: string) => session.send(msg),
     stopSession: vi.fn().mockResolvedValue(undefined),
     _session: session,
@@ -129,6 +133,21 @@ describe('UltraappManager', () => {
     expect(buildEvents).toContain('build-start');
     expect(buildEvents).toContain('council-consensus');
     expect(buildEvents).toContain('build-complete');
+
+    // v0.4: a narrator session was spawned for the run and stopped after
+    // build-complete; at least one narrator chat entry was written.
+    const startedSessions = (sm.startSession as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: [{ name?: string }]) => c[0].name,
+    );
+    expect(startedSessions).toContain(`narrator-${id}`);
+    // Narrator stop is fire-and-forget on terminal events; allow a tick.
+    await new Promise((r) => setTimeout(r, 50));
+    const stoppedSessions = (sm.stopSession as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: [string]) => c[0],
+    );
+    expect(stoppedSessions).toContain(`narrator-${id}`);
+    const chat = await store.readChat(id);
+    expect(chat.some((e) => e.kind === 'narrator')).toBe(true);
 
     synth.mockRestore();
     fix.mockRestore();
