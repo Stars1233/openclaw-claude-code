@@ -17,11 +17,7 @@ export interface ContainerLastAccess {
   port?: number;
 }
 
-export function findColdContainers(
-  items: ContainerLastAccess[],
-  now: number,
-  days: number,
-): ContainerLastAccess[] {
+export function findColdContainers(items: ContainerLastAccess[], now: number, days: number): ContainerLastAccess[] {
   const cutoff = now - days * 86400000;
   return items.filter((i) => i.lastAccess < cutoff);
 }

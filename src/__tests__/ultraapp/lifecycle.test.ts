@@ -26,9 +26,7 @@ describe('findColdContainers', () => {
   });
 
   it('boundary: exactly threshold days is NOT cold', () => {
-    const data: ContainerLastAccess[] = [
-      { containerName: 'edge', lastAccess: NOW - 30 * 86400000 },
-    ];
+    const data: ContainerLastAccess[] = [{ containerName: 'edge', lastAccess: NOW - 30 * 86400000 }];
     expect(findColdContainers(data, NOW, 30)).toEqual([]);
   });
 });
@@ -52,13 +50,7 @@ describe('startContainerAndRegister', () => {
   it('starts container then registers slug→port on success', async () => {
     const router = fakeRouter();
     const start = vi.fn().mockResolvedValue({ ok: true });
-    const r = await startContainerAndRegister(
-      'cont-a',
-      'foo',
-      19101,
-      router as never,
-      { dockerStartFn: start },
-    );
+    const r = await startContainerAndRegister('cont-a', 'foo', 19101, router as never, { dockerStartFn: start });
     expect(r.ok).toBe(true);
     expect(start).toHaveBeenCalledWith('cont-a');
     expect(router.calls).toEqual([['register', 'foo', 19101]]);
@@ -67,13 +59,7 @@ describe('startContainerAndRegister', () => {
   it('does not register when start fails', async () => {
     const router = fakeRouter();
     const start = vi.fn().mockResolvedValue({ ok: false, error: 'no such container' });
-    const r = await startContainerAndRegister(
-      'cont-a',
-      'foo',
-      19101,
-      router as never,
-      { dockerStartFn: start },
-    );
+    const r = await startContainerAndRegister('cont-a', 'foo', 19101, router as never, { dockerStartFn: start });
     expect(r.ok).toBe(false);
     expect(router.calls).toEqual([]);
   });

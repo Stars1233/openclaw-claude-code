@@ -20,11 +20,7 @@ import { runFixOnFailure } from './fix-on-failure.js';
 import { spawnFixerSessionWith } from './fix-on-failure-session.js';
 import { deployArtifact, type DeployArgs, type DeployResult } from './deploy.js';
 import { dockerBuild, dockerRun, dockerRmi } from './docker.js';
-import {
-  startContainerAndRegister,
-  stopContainerAndDeregister,
-  deleteContainerAndDeregister,
-} from './lifecycle.js';
+import { startContainerAndRegister, stopContainerAndDeregister, deleteContainerAndDeregister } from './lifecycle.js';
 import type { UltraappRouter } from './router.js';
 
 export type RunEvent =
@@ -308,11 +304,7 @@ export class UltraappManager {
       /* run already gone */
     }
     if (latest?.deploy && spec && this.opts.router) {
-      await deleteContainerAndDeregister(
-        latest.deploy.containerName,
-        spec.meta.name,
-        this.opts.router,
-      );
+      await deleteContainerAndDeregister(latest.deploy.containerName, spec.meta.name, this.opts.router);
       await dockerRmi(latest.deploy.imageTag).catch(() => {
         /* image may not exist */
       });

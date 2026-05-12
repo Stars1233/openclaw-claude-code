@@ -111,9 +111,7 @@ program
       manager.setUltraappRouter(router);
       console.log(`[ultraapp] router on http://127.0.0.1:${routerStartedPort}/forge/<slug>/`);
     } catch (err) {
-      console.warn(
-        `[ultraapp] router failed to start: ${(err as Error).message} — deploys will be skipped`,
-      );
+      console.warn(`[ultraapp] router failed to start: ${(err as Error).message} — deploys will be skipped`);
     }
 
     const server = new EmbeddedServer(manager, parseInt(opts.port), opts.host);

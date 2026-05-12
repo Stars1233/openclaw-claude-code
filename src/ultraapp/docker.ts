@@ -75,16 +75,7 @@ export interface DockerRunResult {
 
 export async function dockerRun(args: RunArgs): Promise<DockerRunResult> {
   const sp = args.spawnFn ?? realSpawn;
-  const cli = [
-    'run',
-    '-d',
-    '--name',
-    args.name,
-    '--restart',
-    'unless-stopped',
-    '-p',
-    `${args.hostPort}:3000`,
-  ];
+  const cli = ['run', '-d', '--name', args.name, '--restart', 'unless-stopped', '-p', `${args.hostPort}:3000`];
   for (const [k, v] of Object.entries(args.env)) cli.push('-e', `${k}=${v}`);
   for (const [host, container] of Object.entries(args.volumes)) cli.push('-v', `${host}:${container}`);
   cli.push(args.image);
@@ -93,18 +84,12 @@ export async function dockerRun(args: RunArgs): Promise<DockerRunResult> {
   return { ok: true, containerName: r.stdout.trim() };
 }
 
-export async function dockerStop(
-  name: string,
-  spawnFn: SpawnFn = realSpawn,
-): Promise<{ ok: boolean; error?: string }> {
+export async function dockerStop(name: string, spawnFn: SpawnFn = realSpawn): Promise<{ ok: boolean; error?: string }> {
   const r = await run(['stop', name], spawnFn);
   return r.ok ? { ok: true } : { ok: false, error: r.stderr };
 }
 
-export async function dockerRm(
-  name: string,
-  spawnFn: SpawnFn = realSpawn,
-): Promise<{ ok: boolean; error?: string }> {
+export async function dockerRm(name: string, spawnFn: SpawnFn = realSpawn): Promise<{ ok: boolean; error?: string }> {
   const r = await run(['rm', '-f', name], spawnFn);
   return r.ok ? { ok: true } : { ok: false, error: r.stderr };
 }
@@ -117,10 +102,7 @@ export async function dockerStart(
   return r.ok ? { ok: true } : { ok: false, error: r.stderr };
 }
 
-export async function dockerRmi(
-  tag: string,
-  spawnFn: SpawnFn = realSpawn,
-): Promise<{ ok: boolean; error?: string }> {
+export async function dockerRmi(tag: string, spawnFn: SpawnFn = realSpawn): Promise<{ ok: boolean; error?: string }> {
   const r = await run(['rmi', '-f', tag], spawnFn);
   return r.ok ? { ok: true } : { ok: false, error: r.stderr };
 }

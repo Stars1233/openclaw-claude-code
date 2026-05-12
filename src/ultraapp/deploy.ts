@@ -15,11 +15,7 @@ export interface DeployArgs {
   worktreePath: string;
   slug: string;
   hostDataDir: string;
-  dockerBuild: (a: {
-    tag: string;
-    cwd: string;
-    buildArgs: Record<string, string>;
-  }) => Promise<BuildResult>;
+  dockerBuild: (a: { tag: string; cwd: string; buildArgs: Record<string, string> }) => Promise<BuildResult>;
   dockerRun: (a: {
     image: string;
     name: string;

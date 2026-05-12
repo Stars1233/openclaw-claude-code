@@ -1,12 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  dockerBuild,
-  dockerRun,
-  dockerStop,
-  dockerRm,
-  dockerStart,
-  dockerPs,
-} from '../../ultraapp/docker.js';
+import { dockerBuild, dockerRun, dockerStop, dockerRm, dockerStart, dockerPs } from '../../ultraapp/docker.js';
 
 function fakeChild(code: number, stdout: string, stderr: string = '') {
   const stream = (data: string) => ({
@@ -52,9 +45,7 @@ describe('docker wrapper', () => {
   });
 
   it('dockerBuild parses buildx "writing image sha256:..." output', async () => {
-    const spawn = vi
-      .fn()
-      .mockReturnValue(fakeChild(0, '#15 writing image sha256:deadbeef done\n'));
+    const spawn = vi.fn().mockReturnValue(fakeChild(0, '#15 writing image sha256:deadbeef done\n'));
     const r = await dockerBuild({ tag: 'x:v1', cwd: '/t', spawnFn: spawn });
     expect(r.ok).toBe(true);
     expect(r.imageId).toBe('deadbeef');

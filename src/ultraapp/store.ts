@@ -181,9 +181,7 @@ export class UltraappStore {
     );
   }
 
-  async readArtifacts(
-    runId: string,
-  ): Promise<
+  async readArtifacts(runId: string): Promise<
     Array<{
       version: string;
       worktreePath: string;
@@ -203,9 +201,7 @@ export class UltraappStore {
       }> = [];
       for (const v of versions) {
         try {
-          const a = JSON.parse(
-            await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8'),
-          ) as {
+          const a = JSON.parse(await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8')) as {
             worktreePath: string;
             builtAt: string;
             deploy?: DeployInfo;
