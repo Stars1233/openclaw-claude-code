@@ -1251,6 +1251,57 @@ const plugin = {
         return { ok: true };
       },
     });
+
+    // ─── ultraapp (read-only) ─────────────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultraapp_list',
+      description:
+        'List all ultraapp runs (interview/build/done) with title, mode, and timestamps. Read-only — to start a new run, open the Forge dashboard tab.',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => {
+        const ua = getManager().getUltraappManager();
+        const runs = await ua.store.listRuns();
+        return { ok: true, runs };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_get',
+      description:
+        'Get the AppSpec, chat history, and state for one ultraapp run. Pass `runId` from ultraapp_list.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const runId = args.runId as string;
+        const [spec, chat, state] = await Promise.all([
+          ua.store.readSpec(runId),
+          ua.store.readChat(runId),
+          ua.store.readState(runId),
+        ]);
+        return { ok: true, spec, chat, state };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_status',
+      description:
+        'Get the run state (mode, failure reason if any) for one ultraapp run. Cheap; no chat or spec data.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const state = await ua.store.readState(args.runId as string);
+        return { ok: true, ...state };
+      },
+    });
   },
 };
 
