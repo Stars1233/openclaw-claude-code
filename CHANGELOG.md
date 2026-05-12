@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v0.5** — done-mode feedback loop. After a run reaches `done`,
+  any chat message is classified by a Haiku call into one of three buckets
+  and routed accordingly:
+  - **cosmetic** → an Opus patcher session emits a unified diff, the diff
+    is applied to a fresh codebase copy, `runFixOnFailure` validates it,
+    on success the result is snapshotted as the next `vN` (auto-revert
+    on failure).
+  - **spec-delta** → a focused bootstrap is injected into the existing
+    interview session and mode flips back to `interview` so the user
+    answers only the slots that need changing; clicking Start Build
+    triggers a delta-aware council rerun.
+  - **structural** → a narrator note suggests starting a fresh run.
+  - New module: `src/ultraapp/feedback-classifier.ts`,
+    `src/ultraapp/patcher.ts`, `src/ultraapp/spec-delta.ts`,
+    `src/ultraapp/versions.ts`, `src/ultraapp/diff-apply.ts` (wraps the
+    `diff` npm package).
+- New manager methods: `submitDoneModeMessage`, `promoteVersion`,
+  `injectSystemMessage`, `setModeForDelta`.
+- New HTTP routes: `POST /ultraapp/<id>/feedback`,
+  `POST /ultraapp/<id>/promote-version` (body: `{ "version": "vN" }`).
+- New runtime dep: `diff` (BSD-2; for the patcher's unified-diff applier).
+
+### Deferred from v0.5 (user follow-up)
+
+- Dashboard done-mode UI (input mode-switch, classifier announce-and-confirm
+  card with countdown, Versions panel with `[Promote]` buttons) — backend
+  fully wired; the frontend can call the new routes directly. UI polish is
+  intentionally deferred to keep this round focused on load-bearing logic.
+- Spec-delta's automatic council rerun + v2 codebase snapshot — for v0.5
+  the user clicks Start Build manually after the focused interview
+  completes. Wiring that into the existing build queue is straightforward
+  but needs a manual end-to-end test pass that requires real LLM access.
 - **ultraapp v0.4** — narrator. During build mode, a per-run Claude Haiku
   session subscribes to the build event stream, batches events (every 6
   events or 15 s of activity, whichever first; `build-complete` /
