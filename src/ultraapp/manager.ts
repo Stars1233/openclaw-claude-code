@@ -13,6 +13,11 @@ import {
   defaultAllowedRoots,
 } from './files.js';
 import { applyPatch, type PatchOp } from './json-patch.js';
+import { UltraappBuildQueue } from './build.js';
+import type { BuildEvent } from './build-events.js';
+import { runCouncilSynth } from './council-adapter.js';
+import { runFixOnFailure } from './fix-on-failure.js';
+import { spawnFixerSessionWith } from './fix-on-failure-session.js';
 
 export type RunEvent =
   | { type: 'question'; question: QuestionEnvelope }
@@ -20,6 +25,7 @@ export type RunEvent =
   | { type: 'chat'; entry: ChatEntry }
   | { type: 'completeness'; ok: boolean; missing: string[] }
   | { type: 'interview-complete'; summary: string }
+  | { type: 'build-event'; event: BuildEvent }
   | { type: 'error'; message: string };
 
 interface SessionManagerLike {
@@ -52,9 +58,14 @@ const SESSION_KICKOFF = 'Begin the ultraapp interview now. Ask the first questio
 export class UltraappManager {
   private readonly runs = new Map<string, ActiveRun>();
   private readonly skillContent: string;
+  private readonly buildQueue: UltraappBuildQueue;
 
   constructor(private readonly opts: UltraappManagerOptions) {
     this.skillContent = loadSkill(opts.skillPath);
+    this.buildQueue = new UltraappBuildQueue({
+      worker: (runId, emit) => this.runBuild(runId, emit),
+    });
+    this.buildQueue.subscribe((ev) => this.onBuildEvent(ev));
   }
 
   get store(): UltraappStore {
@@ -124,6 +135,78 @@ export class UltraappManager {
     const run = this.requireRun(runId);
     run.emitter.on('event', listener);
     return () => run.emitter.off('event', listener);
+  }
+
+  async startBuild(runId: string): Promise<void> {
+    const run = this.requireRun(runId);
+    await this.opts.store.setMode(runId, 'queued');
+    const text = 'Build queued.';
+    await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text });
+    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text } });
+    void this.buildQueue.enqueue(runId);
+  }
+
+  cancelBuild(runId: string): void {
+    this.buildQueue.cancel(runId);
+  }
+
+  buildPosition(runId: string): number {
+    return this.buildQueue.position(runId);
+  }
+
+  private async runBuild(runId: string, emit: (e: BuildEvent) => void): Promise<void> {
+    await this.opts.store.setMode(runId, 'building');
+    emit({ type: 'build-start', runId });
+    const spec = await this.opts.store.readSpec(runId);
+    const runDir = this.opts.store.runDirAbsolute(runId);
+
+    const council = await runCouncilSynth({
+      spec,
+      runId,
+      runDir,
+      sessionManager: this.opts.sessionManager,
+    });
+    if (!council.ok) {
+      emit({ type: 'build-failed', runId, phase: 'council', reason: council.reason ?? 'unknown' });
+      await this.opts.store.setMode(runId, 'failed', council.reason);
+      return;
+    }
+    emit({ type: 'council-consensus', runId, rounds: council.rounds });
+
+    emit({ type: 'fix-start', runId });
+    const fix = await runFixOnFailure({
+      worktreePath: council.worktreePath!,
+      maxRounds: 5,
+      // Reuse the same SessionManager so the fixer doesn't spawn a fresh one per fix.
+      spawnFixer: (a) => spawnFixerSessionWith(this.opts.sessionManager, a),
+    });
+    if (!fix.ok) {
+      emit({
+        type: 'build-failed',
+        runId,
+        phase: 'fix-on-failure',
+        reason: fix.lastError ?? 'budget exhausted',
+      });
+      await this.opts.store.setMode(runId, 'failed', fix.lastError);
+      return;
+    }
+    emit({ type: 'fix-complete', runId, rounds: fix.rounds });
+
+    await this.opts.store.recordBuildArtifact(runId, {
+      worktreePath: council.worktreePath!,
+      version: 'v1',
+    });
+    await this.opts.store.setMode(runId, 'build-complete');
+    emit({ type: 'build-complete', runId, worktreePath: council.worktreePath! });
+  }
+
+  private onBuildEvent(ev: BuildEvent): void {
+    const run = this.runs.get(ev.runId);
+    if (!run) return;
+    const text = describeBuildEvent(ev);
+    void this.opts.store.appendChat(ev.runId, { role: 'system', kind: 'narrator', text });
+    this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text } });
+    this.emit(run, { type: 'build-event', event: ev });
   }
 
   private async driveTurn(run: ActiveRun, message: string): Promise<void> {
@@ -198,6 +281,31 @@ export class UltraappManager {
     const r = this.runs.get(runId);
     if (!r) throw new Error(`unknown runId: ${runId}`);
     return r;
+  }
+}
+
+function describeBuildEvent(ev: BuildEvent): string {
+  switch (ev.type) {
+    case 'queued':
+      return `Queued (position ${ev.position}).`;
+    case 'build-start':
+      return 'Build started — dispatching council.';
+    case 'council-round':
+      return `Council round ${ev.round}: ${ev.agentName} ${ev.vote ? 'voted ' + ev.vote : 'thinking'}.`;
+    case 'council-consensus':
+      return `Council consensus reached after ${ev.rounds} rounds.`;
+    case 'fix-start':
+      return 'Running build/test/docker checks; will fix on failure.';
+    case 'fix-round':
+      return `Fix round ${ev.round}: failing on \`${ev.failingCommand}\`.`;
+    case 'fix-complete':
+      return `Build green after ${ev.rounds} fix round(s).`;
+    case 'build-complete':
+      return `Build complete. Codebase at ${ev.worktreePath}.`;
+    case 'build-failed':
+      return `Build FAILED in ${ev.phase}: ${ev.reason}`;
+    case 'build-cancelled':
+      return 'Build cancelled.';
   }
 }
 

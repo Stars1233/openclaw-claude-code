@@ -91,4 +91,75 @@ describe('UltraappManager', () => {
     const types = events.map((e) => (e as { type: string }).type);
     expect(types).toContain('spec-updated');
   });
+
+  it('startBuild transitions interview→queued→building→build-complete and records artifact', async () => {
+    const councilMod = await import('../../ultraapp/council-adapter.js');
+    const fixMod = await import('../../ultraapp/fix-on-failure.js');
+    const synth = vi.spyOn(councilMod, 'runCouncilSynth').mockImplementation(async ({ runDir }) => {
+      const codebase = path.join(runDir, 'versions', 'v1', 'codebase');
+      fs.mkdirSync(codebase, { recursive: true });
+      return { ok: true, worktreePath: codebase, rounds: 1 };
+    });
+    const fix = vi
+      .spyOn(fixMod, 'runFixOnFailure')
+      .mockResolvedValue({ ok: true, rounds: 0 });
+
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+
+    const events: { type: string }[] = [];
+    mgr.subscribe(id, (ev) => events.push(ev as { type: string }));
+
+    await mgr.startBuild(id);
+    // Allow queue to drain
+    for (let i = 0; i < 50; i++) {
+      const s = await store.readState(id);
+      if (s.mode === 'build-complete' || s.mode === 'failed') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const finalState = await store.readState(id);
+    expect(finalState.mode).toBe('build-complete');
+    const arts = await store.readArtifacts(id);
+    expect(arts.length).toBe(1);
+    expect(arts[0].version).toBe('v1');
+
+    const buildEvents = events
+      .filter((e) => e.type === 'build-event')
+      .map((e) => (e as unknown as { event: { type: string } }).event.type);
+    expect(buildEvents).toContain('build-start');
+    expect(buildEvents).toContain('council-consensus');
+    expect(buildEvents).toContain('build-complete');
+
+    synth.mockRestore();
+    fix.mockRestore();
+  });
+
+  it('startBuild marks failed when council fails', async () => {
+    const councilMod = await import('../../ultraapp/council-adapter.js');
+    const fixMod = await import('../../ultraapp/fix-on-failure.js');
+    const synth = vi
+      .spyOn(councilMod, 'runCouncilSynth')
+      .mockResolvedValue({ ok: false, reason: 'no consensus', rounds: 8 });
+    const fix = vi
+      .spyOn(fixMod, 'runFixOnFailure')
+      .mockResolvedValue({ ok: true, rounds: 0 });
+
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    await mgr.startBuild(id);
+    for (let i = 0; i < 50; i++) {
+      const s = await store.readState(id);
+      if (s.mode === 'failed' || s.mode === 'build-complete') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    const s = await store.readState(id);
+    expect(s.mode).toBe('failed');
+    expect(s.failure).toMatch(/no consensus/);
+    expect(fix).not.toHaveBeenCalled();
+    synth.mockRestore();
+    fix.mockRestore();
+  });
 });
