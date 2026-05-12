@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v0.3** — deploy + reverse-proxy router. After `build-complete`,
+  the manager auto-runs `docker build` + `docker run -d --restart
+  unless-stopped` on a dynamic port in `[19100, 19999]` and registers the
+  app's slug with a Node-only reverse proxy at `localhost:19000/forge/<slug>/`
+  (with fallback to the next free port if 19000 is taken). After health-check
+  passes, the chat surfaces a share card with copy / open / Make Public…
+  actions; the modal lists copy-pastable Cloudflare Tunnel / ngrok / Tailscale
+  Funnel / Caddy snippets so users can expose the app on their own terms.
+  Sidebar items grow Start / Stop / Delete buttons (delete removes container
+  + image + on-disk artifacts). The router persists its slug map to
+  `_router.json` and reloads on next boot, so containers survive
+  claw-orchestrator restarts (Docker `--restart unless-stopped`).
+- New HTTP routes: `POST /ultraapp/<id>/start`, `POST /ultraapp/<id>/stop`,
+  `POST /ultraapp/<id>/delete`.
+- `RunMode` widened with `'deploying'`; full `'done'` is now reachable.
+- Artifact metadata extended with `deploy: { url, port, containerName,
+  imageTag }` and `deployedAt`.
 - **ultraapp v0.2** — `[Start Build]` is wired to a real pipeline. The Forge
   tab now drives the AppSpec through a 3-agent council super-task (uses the
   existing `Council` class with three Claude Opus agents in fresh git
