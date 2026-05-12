@@ -748,6 +748,21 @@ export class EmbeddedServer {
           json(200, { ok: true, artifacts: arts });
           return;
         }
+        if (seg1 && seg2 === 'start' && !seg3) {
+          const r = await ua.startContainer(seg1);
+          json(r.ok ? 200 : 500, r);
+          return;
+        }
+        if (seg1 && seg2 === 'stop' && !seg3) {
+          const r = await ua.stopContainer(seg1);
+          json(r.ok ? 200 : 500, r);
+          return;
+        }
+        if (seg1 && seg2 === 'delete' && !seg3) {
+          const r = await ua.deleteRun(seg1);
+          json(r.ok ? 200 : 500, r);
+          return;
+        }
         if (seg1 && seg2 === 'files') {
           const b = body as Record<string, unknown>;
           if (typeof b.absolutePath === 'string') {

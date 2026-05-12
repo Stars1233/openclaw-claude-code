@@ -59,6 +59,9 @@ function fakeManager() {
       addFile: vi.fn().mockResolvedValue({ ref: '/tmp/foo' }),
       startBuild: vi.fn().mockResolvedValue(undefined),
       cancelBuild: vi.fn(),
+      startContainer: vi.fn().mockResolvedValue({ ok: true }),
+      stopContainer: vi.fn().mockResolvedValue({ ok: true }),
+      deleteRun: vi.fn().mockResolvedValue({ ok: true }),
       subscribe: vi.fn().mockImplementation((_id: string, listener: (ev: unknown) => void) => {
         emitter.on('event', listener);
         return () => emitter.off('event', listener);
@@ -150,5 +153,23 @@ describe('ultraapp routes', () => {
     expect(r.status).toBe(200);
     const j = JSON.parse(r.body);
     expect(j.artifacts[0].version).toBe('v1');
+  });
+
+  it('POST /ultraapp/<id>/start starts the container', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/start', { body: {} });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/stop stops the container', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/stop', { body: {} });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
+  });
+
+  it('POST /ultraapp/<id>/delete deletes the run', async () => {
+    const r = await request(port, '/ultraapp/ua-test-1/delete', { body: {} });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body).ok).toBe(true);
   });
 });
