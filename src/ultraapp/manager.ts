@@ -18,6 +18,14 @@ import type { BuildEvent } from './build-events.js';
 import { runCouncilSynth } from './council-adapter.js';
 import { runFixOnFailure } from './fix-on-failure.js';
 import { spawnFixerSessionWith } from './fix-on-failure-session.js';
+import { deployArtifact, type DeployArgs, type DeployResult } from './deploy.js';
+import { dockerBuild, dockerRun, dockerRmi } from './docker.js';
+import {
+  startContainerAndRegister,
+  stopContainerAndDeregister,
+  deleteContainerAndDeregister,
+} from './lifecycle.js';
+import type { UltraappRouter } from './router.js';
 
 export type RunEvent =
   | { type: 'question'; question: QuestionEnvelope }
@@ -26,6 +34,7 @@ export type RunEvent =
   | { type: 'completeness'; ok: boolean; missing: string[] }
   | { type: 'interview-complete'; summary: string }
   | { type: 'build-event'; event: BuildEvent }
+  | { type: 'app-url'; url: string; version: string }
   | { type: 'error'; message: string };
 
 interface SessionManagerLike {
@@ -45,6 +54,12 @@ export interface UltraappManagerOptions {
   store: UltraappStore;
   sessionManager: SessionManagerLike;
   skillPath?: string;
+  /** Optional reverse-proxy router. When absent, the build pipeline ends in
+      `build-complete` (v0.2 behaviour); when present, deploy runs after build
+      and the run reaches `done` with a public-but-local URL. */
+  router?: UltraappRouter;
+  /** Test seam: stub the deploy state machine. */
+  deployFn?: (a: DeployArgs) => Promise<DeployResult>;
 }
 
 interface ActiveRun {
@@ -192,12 +207,124 @@ export class UltraappManager {
     }
     emit({ type: 'fix-complete', runId, rounds: fix.rounds });
 
+    const version = 'v1';
     await this.opts.store.recordBuildArtifact(runId, {
       worktreePath: council.worktreePath!,
-      version: 'v1',
+      version,
     });
     await this.opts.store.setMode(runId, 'build-complete');
     emit({ type: 'build-complete', runId, worktreePath: council.worktreePath! });
+
+    // If a router is wired, continue into deploy. Without a router (legacy v0.2
+    // wiring or test setup), build-complete is the resting state.
+    if (!this.opts.router) return;
+
+    await this.runDeployStage({
+      runId,
+      version,
+      worktreePath: council.worktreePath!,
+      slug: spec.meta.name,
+      emit,
+    });
+  }
+
+  private async runDeployStage(args: {
+    runId: string;
+    version: string;
+    worktreePath: string;
+    slug: string;
+    emit: (e: BuildEvent) => void;
+  }): Promise<void> {
+    const router = this.opts.router!;
+    await this.opts.store.setMode(args.runId, 'deploying');
+    const taken = new Set(router.list().map((r) => r.port));
+    const deploy = this.opts.deployFn ?? deployArtifact;
+    const dep = await deploy({
+      runId: args.runId,
+      version: args.version,
+      worktreePath: args.worktreePath,
+      slug: args.slug,
+      hostDataDir: this.opts.store.runDirAbsolute(args.runId),
+      dockerBuild: (a) => dockerBuild(a),
+      dockerRun: (a) => dockerRun(a),
+      router,
+      fetchFn: fetch,
+      takenPorts: taken,
+    });
+    if (!dep.ok) {
+      args.emit({
+        type: 'build-failed',
+        runId: args.runId,
+        phase: 'orchestrator',
+        reason: `deploy: ${dep.reason ?? 'unknown'}`,
+      });
+      await this.opts.store.setMode(args.runId, 'failed', dep.reason);
+      return;
+    }
+    await this.opts.store.recordDeploy(args.runId, args.version, {
+      url: dep.url!,
+      port: dep.port!,
+      containerName: dep.containerName!,
+      imageTag: dep.imageTag!,
+    });
+    await this.opts.store.setMode(args.runId, 'done');
+    const run = this.runs.get(args.runId);
+    if (run) {
+      this.emit(run, { type: 'app-url', url: dep.url!, version: args.version });
+    }
+  }
+
+  async startContainer(runId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.opts.router) return { ok: false, error: 'router not configured' };
+    const arts = await this.opts.store.readArtifacts(runId);
+    const latest = arts[arts.length - 1];
+    if (!latest?.deploy) return { ok: false, error: 'no deployed artifact' };
+    const spec = await this.opts.store.readSpec(runId);
+    const r = await startContainerAndRegister(
+      latest.deploy.containerName,
+      spec.meta.name,
+      latest.deploy.port,
+      this.opts.router,
+    );
+    return r;
+  }
+
+  async stopContainer(runId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.opts.router) return { ok: false, error: 'router not configured' };
+    const arts = await this.opts.store.readArtifacts(runId);
+    const latest = arts[arts.length - 1];
+    if (!latest?.deploy) return { ok: false, error: 'no deployed artifact' };
+    const spec = await this.opts.store.readSpec(runId);
+    return stopContainerAndDeregister(latest.deploy.containerName, spec.meta.name, this.opts.router);
+  }
+
+  async deleteRun(runId: string): Promise<{ ok: boolean; error?: string }> {
+    const arts = await this.opts.store.readArtifacts(runId).catch(() => []);
+    const latest = arts[arts.length - 1];
+    let spec: AppSpec | null = null;
+    try {
+      spec = await this.opts.store.readSpec(runId);
+    } catch {
+      /* run already gone */
+    }
+    if (latest?.deploy && spec && this.opts.router) {
+      await deleteContainerAndDeregister(
+        latest.deploy.containerName,
+        spec.meta.name,
+        this.opts.router,
+      );
+      await dockerRmi(latest.deploy.imageTag).catch(() => {
+        /* image may not exist */
+      });
+    }
+    // Stop & forget the active run if any
+    const run = this.runs.get(runId);
+    if (run) {
+      await this.opts.sessionManager.stopSession(run.sessionName).catch(() => {});
+      this.runs.delete(runId);
+    }
+    await this.opts.store.deleteRunFiles(runId);
+    return { ok: true };
   }
 
   private onBuildEvent(ev: BuildEvent): void {

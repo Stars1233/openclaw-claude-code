@@ -4,7 +4,22 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { type AppSpec, makeEmptySpec, validateAppSpec } from './spec.js';
 
-export type RunMode = 'interview' | 'queued' | 'building' | 'build-complete' | 'done' | 'failed' | 'cancelled';
+export type RunMode =
+  | 'interview'
+  | 'queued'
+  | 'building'
+  | 'build-complete'
+  | 'deploying'
+  | 'done'
+  | 'failed'
+  | 'cancelled';
+
+export interface DeployInfo {
+  url: string;
+  port: number;
+  containerName: string;
+  imageTag: string;
+}
 
 export interface RunState {
   runId: string;
@@ -166,17 +181,43 @@ export class UltraappStore {
     );
   }
 
-  async readArtifacts(runId: string): Promise<Array<{ version: string; worktreePath: string; builtAt: string }>> {
+  async readArtifacts(
+    runId: string,
+  ): Promise<
+    Array<{
+      version: string;
+      worktreePath: string;
+      builtAt: string;
+      deploy?: DeployInfo;
+      deployedAt?: string;
+    }>
+  > {
     try {
       const versions = await fsp.readdir(this.versionsDir(runId));
-      const out: Array<{ version: string; worktreePath: string; builtAt: string }> = [];
+      const out: Array<{
+        version: string;
+        worktreePath: string;
+        builtAt: string;
+        deploy?: DeployInfo;
+        deployedAt?: string;
+      }> = [];
       for (const v of versions) {
         try {
-          const a = JSON.parse(await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8')) as {
+          const a = JSON.parse(
+            await fsp.readFile(path.join(this.versionsDir(runId), v, 'artifact.json'), 'utf8'),
+          ) as {
             worktreePath: string;
             builtAt: string;
+            deploy?: DeployInfo;
+            deployedAt?: string;
           };
-          out.push({ version: v, worktreePath: a.worktreePath, builtAt: a.builtAt });
+          out.push({
+            version: v,
+            worktreePath: a.worktreePath,
+            builtAt: a.builtAt,
+            deploy: a.deploy,
+            deployedAt: a.deployedAt,
+          });
         } catch {
           /* skip */
         }
@@ -185,6 +226,18 @@ export class UltraappStore {
     } catch {
       return [];
     }
+  }
+
+  async recordDeploy(runId: string, version: string, deploy: DeployInfo): Promise<void> {
+    const file = path.join(this.versionsDir(runId), version, 'artifact.json');
+    const cur = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    cur.deploy = deploy;
+    cur.deployedAt = new Date().toISOString();
+    await fsp.writeFile(file, JSON.stringify(cur, null, 2));
+  }
+
+  async deleteRunFiles(runId: string): Promise<void> {
+    await fsp.rm(this.runDir(runId), { recursive: true, force: true });
   }
 
   rootDir(): string {

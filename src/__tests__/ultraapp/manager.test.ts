@@ -134,6 +134,105 @@ describe('UltraappManager', () => {
     fix.mockRestore();
   });
 
+  it('startBuild with router runs deploy after build, transitions to done, emits app-url', async () => {
+    const councilMod = await import('../../ultraapp/council-adapter.js');
+    const fixMod = await import('../../ultraapp/fix-on-failure.js');
+    const synth = vi.spyOn(councilMod, 'runCouncilSynth').mockImplementation(async ({ runDir }) => {
+      const codebase = path.join(runDir, 'versions', 'v1', 'codebase');
+      fs.mkdirSync(codebase, { recursive: true });
+      return { ok: true, worktreePath: codebase, rounds: 1 };
+    });
+    const fix = vi.spyOn(fixMod, 'runFixOnFailure').mockResolvedValue({ ok: true, rounds: 0 });
+
+    const fakeRouter = {
+      register: vi.fn(),
+      deregister: vi.fn(),
+      list: () => [],
+      port: () => 19000,
+    } as never;
+    const deployFn = vi.fn().mockResolvedValue({
+      ok: true,
+      url: 'http://localhost:19000/forge/demo/',
+      port: 19101,
+      containerName: 'ultraapp-demo-v1',
+      imageTag: 'ultraapp/demo:v1',
+    });
+
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({
+      store,
+      sessionManager: sm as never,
+      router: fakeRouter,
+      deployFn,
+    });
+    const id = await mgr.createRun();
+
+    // Push a name onto the spec so the slug is set
+    await mgr.applySpecEdit(id, [{ op: 'replace', path: '/meta/name', value: 'demo' }]);
+
+    const events: { type: string }[] = [];
+    mgr.subscribe(id, (ev) => events.push(ev as { type: string }));
+
+    await mgr.startBuild(id);
+    for (let i = 0; i < 50; i++) {
+      const s = await store.readState(id);
+      if (s.mode === 'done' || s.mode === 'failed') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const finalState = await store.readState(id);
+    expect(finalState.mode).toBe('done');
+    expect(deployFn).toHaveBeenCalledTimes(1);
+    const arts = await store.readArtifacts(id);
+    expect(arts[0].deploy?.url).toBe('http://localhost:19000/forge/demo/');
+    const urlEvents = events.filter((e) => e.type === 'app-url');
+    expect(urlEvents.length).toBe(1);
+
+    synth.mockRestore();
+    fix.mockRestore();
+  });
+
+  it('startBuild marks failed when deploy fails', async () => {
+    const councilMod = await import('../../ultraapp/council-adapter.js');
+    const fixMod = await import('../../ultraapp/fix-on-failure.js');
+    const synth = vi.spyOn(councilMod, 'runCouncilSynth').mockImplementation(async ({ runDir }) => {
+      const codebase = path.join(runDir, 'versions', 'v1', 'codebase');
+      fs.mkdirSync(codebase, { recursive: true });
+      return { ok: true, worktreePath: codebase, rounds: 1 };
+    });
+    const fix = vi.spyOn(fixMod, 'runFixOnFailure').mockResolvedValue({ ok: true, rounds: 0 });
+
+    const fakeRouter = {
+      register: vi.fn(),
+      deregister: vi.fn(),
+      list: () => [],
+      port: () => 19000,
+    } as never;
+    const deployFn = vi.fn().mockResolvedValue({ ok: false, reason: 'docker not running' });
+
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({
+      store,
+      sessionManager: sm as never,
+      router: fakeRouter,
+      deployFn,
+    });
+    const id = await mgr.createRun();
+    await mgr.applySpecEdit(id, [{ op: 'replace', path: '/meta/name', value: 'demo' }]);
+    await mgr.startBuild(id);
+    for (let i = 0; i < 50; i++) {
+      const s = await store.readState(id);
+      if (s.mode === 'failed' || s.mode === 'done') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    const s = await store.readState(id);
+    expect(s.mode).toBe('failed');
+    expect(s.failure).toMatch(/docker not running/);
+
+    synth.mockRestore();
+    fix.mockRestore();
+  });
+
   it('startBuild marks failed when council fails', async () => {
     const councilMod = await import('../../ultraapp/council-adapter.js');
     const fixMod = await import('../../ultraapp/fix-on-failure.js');
