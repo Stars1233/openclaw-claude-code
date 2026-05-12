@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **ultraapp v0.1** — new dashboard tab + tool family. Structured Q&A interview
+  engine drives a Claude Opus session through a slot-driven AppSpec interview;
+  runs persist to `~/.claw-orchestrator/ultraapps/`. Forge tab in the dashboard
+  hosts the chat (with structured option chips and `[Submit]`), a live-updating
+  AppSpec sidebar, drag-drop file ingestion (or pasted absolute paths under
+  `$HOME` / `/tmp` only), and inline JSON-textarea spec editing. Build/deploy
+  flows arrive in v0.2 / v0.3.
+- New read-only MCP tools: `ultraapp_list`, `ultraapp_get`, `ultraapp_status`.
+- New HTTP routes under `/ultraapp/*` (list, new, get, answer, spec-edit, files,
+  events SSE).
+
 ## [3.7.1] - 2026-05-11
 
 ### Fixed

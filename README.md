@@ -102,6 +102,10 @@ await manager.autoloopChat("my-run", "go");
 
 SSE stream at `GET /autoloop/<id>/events` (the upcoming 3-pane UI subscribes here). See [`skills/references/autoloop.md`](./skills/references/autoloop.md) for the full operator reference: tool list, push policy, ledger layout, smoke test.
 
+### ultraapp (Forge tab — v0.1)
+
+Turn a structured Q&A interview into a deployable web app. Open the dashboard's Forge tab, click `+ New`, walk through the AppSpec interview (Claude Opus asks one question per turn with recommended options), and the spec lands on disk. Build / deploy / feedback loop arrive in v0.2 → v0.5; v1.0 ships a 5-trace integration smoke. See [`docs/superpowers/specs/2026-05-11-ultraapp-design.md`](./docs/superpowers/specs/2026-05-11-ultraapp-design.md).
+
 ### Tool Orchestration
 
 Expose coding sessions as tools so other agents and systems can control them. The runtime registers 40 tools, including:
