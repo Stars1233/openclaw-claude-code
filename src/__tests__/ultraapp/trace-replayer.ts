@@ -9,7 +9,6 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { vi } from 'vitest';
 import { UltraappManager } from '../../ultraapp/manager.js';
 import { UltraappStore } from '../../ultraapp/store.js';
 
@@ -56,15 +55,11 @@ export async function replayTrace(traceFile: string, storeRoot: string): Promise
 
   let consumed = 0;
   const sm = {
-    startSession: vi
-      .fn()
-      .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'replay' })),
-    sendMessage: vi
-      .fn()
-      .mockImplementation(async () => ({
-        output: replies[consumed++] ?? '[INTERVIEW: COMPLETE]',
-      })),
-    stopSession: vi.fn().mockResolvedValue(undefined),
+    startSession: async (cfg: { name?: string }) => ({ name: cfg.name ?? 'replay' }),
+    sendMessage: async () => ({
+      output: replies[consumed++] ?? '[INTERVIEW: COMPLETE]',
+    }),
+    stopSession: async () => undefined,
   };
 
   /** Drain until either the reply queue is exhausted (consumed >= target)
