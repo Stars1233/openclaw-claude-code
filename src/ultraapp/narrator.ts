@@ -34,11 +34,7 @@ export interface NarratorOptions {
   eventCountThreshold?: number;
 }
 
-const URGENT_TYPES = new Set<BuildEvent['type']>([
-  'build-complete',
-  'build-failed',
-  'build-cancelled',
-]);
+const URGENT_TYPES = new Set<BuildEvent['type']>(['build-complete', 'build-failed', 'build-cancelled']);
 
 export class Narrator {
   private buffer: BuildEvent[] = [];

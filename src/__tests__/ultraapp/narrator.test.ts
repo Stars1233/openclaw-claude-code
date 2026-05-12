@@ -4,12 +4,8 @@ import { Narrator } from '../../ultraapp/narrator.js';
 function fakeSessionManager(replies: string[]) {
   let i = 0;
   return {
-    startSession: vi
-      .fn()
-      .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'narrator-x' })),
-    sendMessage: vi
-      .fn()
-      .mockImplementation(async () => ({ output: replies[i++] ?? 'no more' })),
+    startSession: vi.fn().mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'narrator-x' })),
+    sendMessage: vi.fn().mockImplementation(async () => ({ output: replies[i++] ?? 'no more' })),
     stopSession: vi.fn().mockResolvedValue(undefined),
   };
 }

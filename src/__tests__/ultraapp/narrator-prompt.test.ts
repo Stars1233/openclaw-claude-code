@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  NARRATOR_SYSTEM_PROMPT,
-  composeNarratorBatch,
-} from '../../ultraapp/narrator-prompt.js';
+import { NARRATOR_SYSTEM_PROMPT, composeNarratorBatch } from '../../ultraapp/narrator-prompt.js';
 import type { BuildEvent } from '../../ultraapp/build-events.js';
 
 describe('NARRATOR_SYSTEM_PROMPT', () => {

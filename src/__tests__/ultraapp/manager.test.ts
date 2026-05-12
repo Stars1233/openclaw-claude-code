@@ -16,9 +16,7 @@ function fakeSessionManager(reply: string) {
   return {
     // Echo the requested session name so narrator-<runId> doesn't collide
     // with the interview session's name.
-    startSession: vi
-      .fn()
-      .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
+    startSession: vi.fn().mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
     sendMessage: (_name: string, msg: string) => session.send(msg),
     stopSession: vi.fn().mockResolvedValue(undefined),
     _session: session,
@@ -142,9 +140,7 @@ describe('UltraappManager', () => {
     expect(startedSessions).toContain(`narrator-${id}`);
     // Narrator stop is fire-and-forget on terminal events; allow a tick.
     await new Promise((r) => setTimeout(r, 50));
-    const stoppedSessions = (sm.stopSession as ReturnType<typeof vi.fn>).mock.calls.map(
-      (c: [string]) => c[0],
-    );
+    const stoppedSessions = (sm.stopSession as ReturnType<typeof vi.fn>).mock.calls.map((c: [string]) => c[0]);
     expect(stoppedSessions).toContain(`narrator-${id}`);
     const chat = await store.readChat(id);
     expect(chat.some((e) => e.kind === 'narrator')).toBe(true);
