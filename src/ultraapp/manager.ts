@@ -67,6 +67,11 @@ interface ActiveRun {
   runId: string;
   sessionName: string;
   emitter: EventEmitter;
+  /** Set true by setModeForDelta. On the next interview-complete the
+      manager auto-triggers startBuild instead of waiting for the user
+      to click Start Build (which would be redundant for a focused
+      spec-delta rerun). Cleared after the auto-build kicks off. */
+  deltaPending?: boolean;
 }
 
 const SESSION_KICKOFF = 'Begin the ultraapp interview now. Ask the first question per the skill contract.';
@@ -437,11 +442,14 @@ export class UltraappManager {
     await this.opts.sessionManager.sendMessage(run.sessionName, `[system] ${text}`);
   }
 
-  /** Used by spec-delta to flip mode back to 'interview' for the focused interview. */
+  /** Used by spec-delta to flip mode back to 'interview' for the focused
+      interview, AND mark the run so the next interview-complete auto-fires
+      a build (no need for the user to click Start Build for a delta rerun). */
   async setModeForDelta(runId: string): Promise<void> {
     await this.opts.store.setMode(runId, 'interview');
     const run = this.runs.get(runId);
     if (run) {
+      run.deltaPending = true;
       const spec = await this.opts.store.readSpec(runId);
       this.emit(run, { type: 'spec-updated', spec });
     }
@@ -617,6 +625,35 @@ export class UltraappManager {
           text: parsed.summary,
         });
         this.emit(run, { type: 'interview-complete', summary: parsed.summary });
+        // If this completion came out of a spec-delta focused interview, the
+        // user already signalled their intent to rebuild — auto-start so they
+        // don't have to click again. Best-effort: a strict-validation failure
+        // surfaces as an error chat entry and the user can fix + click Build.
+        if (run.deltaPending) {
+          run.deltaPending = false;
+          const note = 'Spec delta complete — auto-starting build.';
+          await this.opts.store.appendChat(run.runId, {
+            role: 'system',
+            kind: 'narrator',
+            text: note,
+          });
+          this.emit(run, {
+            type: 'chat',
+            entry: { role: 'system', kind: 'narrator', text: note },
+          });
+          this.startBuild(run.runId).catch((err) => {
+            const msg = `Auto-build failed: ${(err as Error).message}`;
+            void this.opts.store.appendChat(run.runId, {
+              role: 'system',
+              kind: 'error',
+              text: msg,
+            });
+            this.emit(run, {
+              type: 'chat',
+              entry: { role: 'system', kind: 'error', text: msg },
+            });
+          });
+        }
         return;
       }
 

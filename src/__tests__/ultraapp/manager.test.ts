@@ -323,6 +323,49 @@ describe('UltraappManager', () => {
     expect(chat.some((e) => e.kind === 'answer' && e.text.includes('hi'))).toBe(true);
   });
 
+  it('setModeForDelta + interview-complete auto-fires startBuild (no manual click required)', async () => {
+    // Set up a fake session whose sendMessage replies with a [COMPLETE]
+    // marker every call EXCEPT the first (the kickoff at createRun must be
+    // a question, otherwise the run ends before we can drive it).
+    let calls = 0;
+    const sm = {
+      startSession: vi
+        .fn()
+        .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
+      sendMessage: vi.fn().mockImplementation(async () => {
+        calls++;
+        if (calls === 1) return { output: questionReply() };
+        return { output: 'Spec delta done.\n[INTERVIEW: COMPLETE]' };
+      }),
+      stopSession: vi.fn().mockResolvedValue(undefined),
+    };
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    // Wait for kickoff driveTurn to consume reply 1
+    await new Promise((r) => setTimeout(r, 50));
+    // Hand-write a strict-valid spec directly so startBuild won't reject
+    const spec = await store.readSpec(id);
+    spec.meta.name = 'demo';
+    spec.meta.title = 'Demo';
+    spec.meta.description = 'demo app';
+    spec.inputs.push({ name: 'doc', type: 'text', required: true, description: 'x' });
+    spec.outputs.push({ name: 'out', type: 'text', description: 'y' });
+    await store.writeSpec(id, spec);
+    // Mark as done (post-deploy state) so setModeForDelta makes sense
+    await store.setMode(id, 'done');
+    await mgr.setModeForDelta(id);
+    // Drive a turn — the next reply is [INTERVIEW: COMPLETE] which should
+    // auto-fire startBuild because deltaPending is set.
+    await mgr.submitAnswer(id, { value: 'go' });
+    for (let k = 0; k < 30; k++) {
+      const s = await store.readState(id);
+      if (s.mode === 'queued' || s.mode === 'building' || s.mode === 'build-complete') break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const finalState = await store.readState(id);
+    expect(['queued', 'building', 'build-complete']).toContain(finalState.mode);
+  });
+
   it('startBuild rejects when strict spec validation fails (cross-ref to undeclared input)', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
