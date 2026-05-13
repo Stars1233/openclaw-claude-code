@@ -22,7 +22,7 @@ npm install -g @anthropic-ai/claude-code
 npm run build
 
 # Integration tests (requires Claude Code CLI)
-npx tsx test-integration.ts
+npx tsx scripts/test-integration.ts
 ```
 
 ## Code Style

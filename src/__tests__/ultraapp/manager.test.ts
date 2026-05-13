@@ -30,16 +30,29 @@ function questionReply(): string {
 describe('UltraappManager', () => {
   let tmp: string;
   let store: UltraappStore;
+  // Tracked at suite scope so afterEach can drain background work before the
+  // tmp dir is removed. Tests assign their manager to this slot in addition
+  // to (or instead of) using a local `const mgr` binding.
+  let activeMgr: UltraappManager | null = null;
 
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ua-mgr-'));
     store = new UltraappStore(tmp);
+    activeMgr = null;
   });
-  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  afterEach(async () => {
+    // Drain in-flight driveTurn() chains (createRun + submitAnswer + addFile +
+    // applySpecEdit all fire detached follow-up turns). Otherwise an in-flight
+    // appendChat can race rmSync and surface as an unhandled ENOENT rejection
+    // that vitest treats as a failure.
+    if (activeMgr) await activeMgr.waitForIdle();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
 
   it('createRun returns runId, persists initial state, starts session', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     expect(id.startsWith('ua-')).toBe(true);
     expect(sm.startSession).toHaveBeenCalled();
@@ -50,6 +63,7 @@ describe('UltraappManager', () => {
   it('createRun emits initial question via subscribe', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const events: unknown[] = [];
     // Subscribe BEFORE createRun's background driveTurn fires
     const id = await mgr.createRun();
@@ -72,6 +86,7 @@ describe('UltraappManager', () => {
       stopSession: vi.fn().mockResolvedValue(undefined),
     };
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await new Promise((r) => setTimeout(r, 50));
     await mgr.submitAnswer(id, { value: 'a' });
@@ -84,6 +99,7 @@ describe('UltraappManager', () => {
   it('applySpecEdit updates spec and emits spec-updated event', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     const events: unknown[] = [];
     mgr.subscribe(id, (ev) => events.push(ev));
@@ -106,6 +122,7 @@ describe('UltraappManager', () => {
 
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
 
     const events: { type: string }[] = [];
@@ -180,6 +197,7 @@ describe('UltraappManager', () => {
       router: fakeRouter,
       deployFn,
     });
+    activeMgr = mgr;
     const id = await mgr.createRun();
 
     // Push a name onto the spec so the slug is set
@@ -232,6 +250,7 @@ describe('UltraappManager', () => {
       router: fakeRouter,
       deployFn,
     });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await mgr.applySpecEdit(id, [{ op: 'replace', path: '/meta/name', value: 'demo' }]);
     await mgr.startBuild(id);
@@ -254,6 +273,7 @@ describe('UltraappManager', () => {
     );
     // First setup: pretend the run is in 'done' mode with a v1 deploy artifact
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await store.setMode(id, 'done');
     const wt = path.join(store.runDirAbsolute(id), 'versions', 'v1', 'codebase');
@@ -287,6 +307,7 @@ describe('UltraappManager', () => {
       '```classification\n{"class":"spec-delta","reason":"r","proposedAction":"focused"}\n```',
     );
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await store.setMode(id, 'done');
     await mgr.submitDoneModeMessage(id, 'add a thumbnail step');
@@ -300,6 +321,7 @@ describe('UltraappManager', () => {
       '```classification\n{"class":"structural","reason":"r","proposedAction":"new run"}\n```',
     );
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await store.setMode(id, 'done');
     await mgr.submitDoneModeMessage(id, 'this is a totally different app');
@@ -315,6 +337,7 @@ describe('UltraappManager', () => {
   it('submitDoneModeMessage outside done mode falls through to submitAnswer', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     // Mode is interview, not done
     await mgr.submitDoneModeMessage(id, 'hi');
@@ -338,6 +361,7 @@ describe('UltraappManager', () => {
       stopSession: vi.fn().mockResolvedValue(undefined),
     };
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     // Wait for kickoff driveTurn to consume reply 1
     await new Promise((r) => setTimeout(r, 50));
@@ -367,6 +391,7 @@ describe('UltraappManager', () => {
   it('startBuild rejects when strict spec validation fails (cross-ref to undeclared input)', async () => {
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     // Drive a spec into a state that passes lax shape but fails strict cross-ref:
     // a pipeline step references an input that was never declared.
@@ -402,6 +427,7 @@ describe('UltraappManager', () => {
 
     const sm = fakeSessionManager(questionReply());
     const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    activeMgr = mgr;
     const id = await mgr.createRun();
     await mgr.startBuild(id);
     for (let i = 0; i < 50; i++) {

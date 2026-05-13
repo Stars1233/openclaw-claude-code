@@ -16,6 +16,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', '*.config.*', 'test-integration.ts'],
+    ignores: ['dist/', 'node_modules/', '*.config.*', 'scripts/'],
   },
 );

@@ -3,9 +3,9 @@
  * Manual integration smoke runner for ultraapp.
  *
  * Usage:
- *   tsx test-ultraapp-integration.ts --trace=text-summariser
- *   tsx test-ultraapp-integration.ts --trace=all
- *   tsx test-ultraapp-integration.ts --trace=text-summariser --with-council [--with-deploy]
+ *   tsx scripts/test-ultraapp-integration.ts --trace=text-summariser
+ *   tsx scripts/test-ultraapp-integration.ts --trace=all
+ *   tsx scripts/test-ultraapp-integration.ts --trace=text-summariser --with-council [--with-deploy]
  *
  * Flags:
  *   --trace=<name|all>     Required. Reference trace(s) to run.

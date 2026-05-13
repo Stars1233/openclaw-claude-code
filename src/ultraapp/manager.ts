@@ -88,6 +88,12 @@ export class UltraappManager {
   private readonly buildQueue: UltraappBuildQueue;
   private readonly narrators = new Map<string, Narrator>();
   private readonly classifierSessions = new Set<string>();
+  // Tracks fire-and-forget background work (driveTurn chains, build-queue
+  // enqueue, narrator finalisation) so tests (and dispose flows) can drain
+  // it before tearing down state. Without this, an in-flight appendChat can
+  // race afterEach's tmp-dir cleanup and surface as an unhandled ENOENT
+  // rejection that vitest treats as failure.
+  private readonly inflightWork = new Set<Promise<unknown>>();
 
   constructor(private readonly opts: UltraappManagerOptions) {
     this.skillContent = loadSkill(opts.skillPath);
@@ -114,7 +120,7 @@ export class UltraappManager {
     });
     const run: ActiveRun = { runId, sessionName, emitter: new EventEmitter() };
     this.runs.set(runId, run);
-    void this.driveTurn(run, SESSION_KICKOFF);
+    this.fireDriveTurn(run, SESSION_KICKOFF);
     return runId;
   }
 
@@ -123,7 +129,7 @@ export class UltraappManager {
     const text = answer.freeform ? answer.freeform : `I picked: ${answer.value}`;
     await this.opts.store.appendChat(runId, { role: 'user', kind: 'answer', text });
     this.emit(run, { type: 'chat', entry: { role: 'user', kind: 'answer', text } });
-    void this.driveTurn(run, text);
+    this.fireDriveTurn(run, text);
   }
 
   async applySpecEdit(runId: string, patch: PatchOp[]): Promise<void> {
@@ -132,7 +138,7 @@ export class UltraappManager {
     const next = applyPatch(spec, patch);
     await this.opts.store.writeSpec(runId, next as typeof spec, 'manual-edit');
     this.emit(run, { type: 'spec-updated', spec: next as AppSpec });
-    void this.driveTurn(
+    this.fireDriveTurn(
       run,
       `[system] User manually edited spec: ${JSON.stringify(patch)}. Re-evaluate later questions.`,
     );
@@ -156,7 +162,7 @@ export class UltraappManager {
       text: `[file added] ${path.basename(ref)}`,
       payload: { ref },
     });
-    void this.driveTurn(run, `[system] User added file: ${ref}. You may call extract_metadata.`);
+    this.fireDriveTurn(run, `[system] User added file: ${ref}. You may call extract_metadata.`);
     return { ref };
   }
 
@@ -186,7 +192,7 @@ export class UltraappManager {
     const text = 'Build queued.';
     await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text });
     this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'narrator', text } });
-    void this.buildQueue.enqueue(runId);
+    this.trackBackground(this.buildQueue.enqueue(runId));
   }
 
   cancelBuild(runId: string): void {
@@ -597,9 +603,29 @@ export class UltraappManager {
       const n = this.narrators.get(ev.runId);
       if (n) {
         this.narrators.delete(ev.runId);
-        void n.stop();
+        this.trackBackground(n.stop());
       }
     }
+  }
+
+  /**
+   * Drain all in-flight background work (driveTurn chains, build-queue
+   * enqueue, narrator finalisation). Tests should await this in their
+   * cleanup hook before removing the per-run tmp directory.
+   */
+  async waitForIdle(): Promise<void> {
+    while (this.inflightWork.size > 0) {
+      await Promise.allSettled([...this.inflightWork]);
+    }
+  }
+
+  private fireDriveTurn(run: ActiveRun, message: string): void {
+    this.trackBackground(this.driveTurn(run, message));
+  }
+
+  private trackBackground<T>(p: Promise<T>): void {
+    const tracked = p.finally(() => this.inflightWork.delete(tracked));
+    this.inflightWork.add(tracked);
   }
 
   private async driveTurn(run: ActiveRun, message: string): Promise<void> {
@@ -650,10 +676,10 @@ export class UltraappManager {
             payload: { ...parsed.question },
           });
           this.emit(run, { type: 'question', question: parsed.question });
-          void this.driveTurn(run, followup);
+          this.fireDriveTurn(run, followup);
           return;
         }
-        void this.driveTurn(run, followup);
+        this.fireDriveTurn(run, followup);
         return;
       }
 

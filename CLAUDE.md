@@ -43,7 +43,7 @@ npm run test           # Vitest unit tests (src/__tests__/)
 
 Integration test (requires all 3 CLIs installed and authenticated):
 ```bash
-npx tsx test-integration.ts
+npx tsx scripts/test-integration.ts
 ```
 
 ## Conventions
@@ -57,7 +57,7 @@ npx tsx test-integration.ts
 ## Testing
 
 - Unit tests live in `src/__tests__/*.test.ts` (vitest, no external dependencies)
-- `test-integration.ts` is a manual smoke test requiring live CLIs — not part of CI
+- `scripts/test-integration.ts` is a manual smoke test requiring live CLIs — not part of CI
 - Tests are excluded from TypeScript compilation (tsconfig.json exclude) so they don't ship in dist/
 
 ## Documentation

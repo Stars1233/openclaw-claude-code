@@ -164,8 +164,8 @@ src/__tests__/fixtures/ultraapp-traces/
 ```
 
 ```bash
-tsx test-ultraapp-integration.ts --trace=image-batch-resize
-tsx test-ultraapp-integration.ts --trace=all
+tsx scripts/test-ultraapp-integration.ts --trace=image-batch-resize
+tsx scripts/test-ultraapp-integration.ts --trace=all
 ```
 
 The `spec-extraction-quality.test.ts` test replays each trace through

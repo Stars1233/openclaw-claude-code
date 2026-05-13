@@ -94,7 +94,7 @@ vlog-cut, llm-agent-pipeline, branching-dag) under
 `spec-extraction-quality.test.ts` test replays each trace through the
 interview engine and asserts the resulting AppSpec matches — any future
 engine or skill drift fails this test loudly. Manual smoke runner at
-`test-ultraapp-integration.ts`.
+`scripts/test-ultraapp-integration.ts`.
 
 #### Skill + reference docs
 
