@@ -15,13 +15,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { replayTrace, stripVolatile } from './trace-replayer.js';
 
-const TRACES = [
-  'text-summariser',
-  'image-batch-resize',
-  'vlog-cut',
-  'llm-agent-pipeline',
-  'branching-dag',
-];
+const TRACES = ['text-summariser', 'image-batch-resize', 'vlog-cut', 'llm-agent-pipeline', 'branching-dag'];
 
 const FIXTURES = path.resolve('src/__tests__/fixtures/ultraapp-traces');
 

@@ -40,11 +40,17 @@ and switchable via Promote.
   `BuildEvent` variants and live position reporting.
 - **Deploy + reverse-proxy router** (`src/ultraapp/deploy.ts`,
   `src/ultraapp/router.ts`, `src/ultraapp/lifecycle.ts`,
-  `src/ultraapp/docker.ts`): `docker build` + `docker run -d --restart
-  unless-stopped` on a dynamic port in `[19100, 19999]`; Node-only
-  reverse proxy at port 19000 (with port-fallback) maps
+  `src/ultraapp/host-strategy.ts`, `src/ultraapp/docker.ts`): two
+  runtime modes — `host` (default) spawns the generated app as a
+  regular Node process (zero extra deps; works anywhere Node works),
+  `docker` (opt-in via `clawo serve --ultraapp-runtime docker`) uses
+  `docker build` + `docker run -d --restart unless-stopped` for shared-
+  host isolation. Both allocate a dynamic port in `[19100, 19999]`.
+  Node-only reverse proxy at port 19000 (with port-fallback) maps
   `/forge/<slug>/*` to backends; slug map persists to `_router.json`
-  for survival across orchestrator restarts.
+  for survival across orchestrator restarts. Host-mode pid metadata
+  persists to `~/.claw-orchestrator/host-procs.json` so start/stop
+  survive orchestrator restarts the same way.
 - **Narrator** (`src/ultraapp/narrator.ts`): per-run Claude Haiku session
   batches build events (every 6 / 15s / urgent) and writes short
   conversational chat updates instead of raw event lines. Language

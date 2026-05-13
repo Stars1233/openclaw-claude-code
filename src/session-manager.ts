@@ -221,6 +221,7 @@ export class SessionManager {
   private logger: Logger;
   private _ultraappManager: UltraappManager | null = null;
   private _ultraappRouter: UltraappRouter | null = null;
+  private _ultraappRuntimeMode: 'host' | 'docker' = 'host';
 
   constructor(config?: Partial<PluginConfig>, logger?: Logger) {
     this.logger = logger || createConsoleLogger('SessionManager');
@@ -263,6 +264,7 @@ export class SessionManager {
         store: new UltraappStore(defaultStoreRoot()),
         sessionManager: this,
         router: this._ultraappRouter ?? undefined,
+        runtimeMode: this._ultraappRuntimeMode,
       });
     }
     return this._ultraappManager;
@@ -280,6 +282,20 @@ export class SessionManager {
       throw new Error('setUltraappRouter must be called before getUltraappManager');
     }
     this._ultraappRouter = router;
+  }
+
+  /**
+   * Pick the ultraapp runtime mode. 'host' (default) spawns the generated
+   * app as a regular Node process — works anywhere Node works, no Docker
+   * required. 'docker' uses `docker build` + `docker run` for isolation,
+   * intended for shared production hosts. Must be called before the first
+   * `getUltraappManager()` call.
+   */
+  setUltraappRuntimeMode(mode: 'host' | 'docker'): void {
+    if (this._ultraappManager) {
+      throw new Error('setUltraappRuntimeMode must be called before getUltraappManager');
+    }
+    this._ultraappRuntimeMode = mode;
   }
 
   // ─── Session Lifecycle ─────────────────────────────────────────────────
@@ -1307,10 +1323,7 @@ export class SessionManager {
       // they're orphans and kill them. Read-merge-write keyed by ownerPid.
       let existing: Record<string, unknown> = {};
       try {
-        existing = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<
-          string,
-          unknown
-        >;
+        existing = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, unknown>;
       } catch {
         /* missing or malformed — start fresh */
       }
@@ -1367,10 +1380,7 @@ export class SessionManager {
   private _cleanupOrphanedPids(): void {
     try {
       if (!fs.existsSync(SessionManager.PID_FILE)) return;
-      const data = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<
-        string,
-        unknown
-      >;
+      const data = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, unknown>;
       for (const [name, raw] of Object.entries(data)) {
         // Resolve entry shape: legacy = number; current = { pid, ownerPid, since }.
         let pid: number;
@@ -1399,18 +1409,14 @@ export class SessionManager {
             /* owner dead */
           }
           if (ownerAlive) {
-            this.logger.info(
-              `PID ${pid} (session: ${name}) owned by live SessionManager pid=${ownerPid} — skipping`,
-            );
+            this.logger.info(`PID ${pid} (session: ${name}) owned by live SessionManager pid=${ownerPid} — skipping`);
             continue;
           }
         } else if (ownerPid === null) {
           // Legacy format with no owner info — too risky to kill if a host
           // shares the file across managers. Skip; the entry will be cleaned
           // up on the next save (read-merge-write drops legacy format).
-          this.logger.info(
-            `PID ${pid} (session: ${name}) is legacy-format (no ownerPid) — skipping kill`,
-          );
+          this.logger.info(`PID ${pid} (session: ${name}) is legacy-format (no ownerPid) — skipping kill`);
           continue;
         }
         try {

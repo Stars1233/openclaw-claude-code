@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  isComplete,
-  validateAppSpec,
-  validateAppSpecShape,
-  makeEmptySpec,
-  type AppSpec,
-} from '../../ultraapp/spec.js';
+import { isComplete, validateAppSpec, validateAppSpecShape, makeEmptySpec, type AppSpec } from '../../ultraapp/spec.js';
 
 describe('makeEmptySpec', () => {
   it('produces a valid skeleton with version, runId, timestamps, and empty arrays', () => {

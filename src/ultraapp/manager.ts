@@ -20,6 +20,7 @@ import { runFixOnFailure } from './fix-on-failure.js';
 import { spawnFixerSessionWith } from './fix-on-failure-session.js';
 import { deployArtifact, type DeployArgs, type DeployResult } from './deploy.js';
 import { dockerBuild, dockerRun, dockerRmi } from './docker.js';
+import { hostBuild, hostRun, hostRmi } from './host-strategy.js';
 import { startContainerAndRegister, stopContainerAndDeregister, deleteContainerAndDeregister } from './lifecycle.js';
 import type { UltraappRouter } from './router.js';
 import { Narrator } from './narrator.js';
@@ -61,6 +62,11 @@ export interface UltraappManagerOptions {
   router?: UltraappRouter;
   /** Test seam: stub the deploy state machine. */
   deployFn?: (a: DeployArgs) => Promise<DeployResult>;
+  /** Runtime mode for build + deploy. 'host' (default) runs the generated
+      app as a regular Node process — works anywhere Node works, no extra
+      deps. 'docker' uses `docker build` + `docker run` for isolation; only
+      use this when you want shared-host hardening. */
+  runtimeMode?: 'host' | 'docker';
 }
 
 interface ActiveRun {
@@ -235,11 +241,20 @@ export class UltraappManager {
     emit({ type: 'council-consensus', runId, rounds: council.rounds });
 
     emit({ type: 'fix-start', runId });
+    const useDocker = this.opts.runtimeMode === 'docker';
     const fix = await runFixOnFailure({
       worktreePath: council.worktreePath!,
       maxRounds: 5,
       // Reuse the same SessionManager so the fixer doesn't spawn a fresh one per fix.
       spawnFixer: (a) => spawnFixerSessionWith(this.opts.sessionManager, a),
+      // Host mode skips the docker-build step (no Docker required).
+      steps: useDocker
+        ? undefined // default: install + build + test + docker build
+        : [
+            { cmd: 'npm', args: ['install'] },
+            { cmd: 'npm', args: ['run', 'build'] },
+            { cmd: 'npm', args: ['test'] },
+          ],
     });
     if (!fix.ok) {
       emit({
@@ -285,14 +300,26 @@ export class UltraappManager {
     await this.opts.store.setMode(args.runId, 'deploying');
     const taken = new Set(router.list().map((r) => r.port));
     const deploy = this.opts.deployFn ?? deployArtifact;
+    const useDocker = this.opts.runtimeMode === 'docker';
     const dep = await deploy({
       runId: args.runId,
       version: args.version,
       worktreePath: args.worktreePath,
       slug: args.slug,
       hostDataDir: this.opts.store.runDirAbsolute(args.runId),
-      dockerBuild: (a) => dockerBuild(a),
-      dockerRun: (a) => dockerRun(a),
+      // Host-spawn (default) runs the codebase as a regular Node process;
+      // Docker (opt-in) runs `docker build` + `docker run`. Both use the
+      // same orchestrator interface so the deploy state machine doesn't care.
+      dockerBuild: (a) => (useDocker ? dockerBuild(a) : hostBuild({ tag: a.tag, cwd: a.cwd, buildArgs: a.buildArgs })),
+      dockerRun: (a) =>
+        useDocker
+          ? dockerRun(a)
+          : hostRun({
+              ...a,
+              // Host runner needs the cwd; smuggle it through env (deploy.ts
+              // passes `image: tag` so we can't use that field).
+              env: { ...a.env, HOST_CWD: args.worktreePath },
+            }),
       router,
       fetchFn: fetch,
       takenPorts: taken,
@@ -326,11 +353,13 @@ export class UltraappManager {
     const latest = arts[arts.length - 1];
     if (!latest?.deploy) return { ok: false, error: 'no deployed artifact' };
     const spec = await this.opts.store.readSpec(runId);
+    const useDocker = this.opts.runtimeMode === 'docker';
     const r = await startContainerAndRegister(
       latest.deploy.containerName,
       spec.meta.name,
       latest.deploy.port,
       this.opts.router,
+      useDocker ? undefined : { dockerStartFn: async (n) => (await import('./host-strategy.js')).hostStart(n) },
     );
     return r;
   }
@@ -341,7 +370,13 @@ export class UltraappManager {
     const latest = arts[arts.length - 1];
     if (!latest?.deploy) return { ok: false, error: 'no deployed artifact' };
     const spec = await this.opts.store.readSpec(runId);
-    return stopContainerAndDeregister(latest.deploy.containerName, spec.meta.name, this.opts.router);
+    const useDocker = this.opts.runtimeMode === 'docker';
+    return stopContainerAndDeregister(
+      latest.deploy.containerName,
+      spec.meta.name,
+      this.opts.router,
+      useDocker ? undefined : { dockerStopFn: async (n) => (await import('./host-strategy.js')).hostStop(n) },
+    );
   }
 
   async deleteRun(runId: string): Promise<{ ok: boolean; error?: string }> {
@@ -353,9 +388,16 @@ export class UltraappManager {
     } catch {
       /* run already gone */
     }
+    const useDocker = this.opts.runtimeMode === 'docker';
     if (latest?.deploy && spec && this.opts.router) {
-      await deleteContainerAndDeregister(latest.deploy.containerName, spec.meta.name, this.opts.router);
-      await dockerRmi(latest.deploy.imageTag).catch(() => {
+      await deleteContainerAndDeregister(
+        latest.deploy.containerName,
+        spec.meta.name,
+        this.opts.router,
+        useDocker ? undefined : { dockerRmFn: async (n) => (await import('./host-strategy.js')).hostRm(n) },
+      );
+      const rmiFn = useDocker ? dockerRmi : hostRmi;
+      await rmiFn(latest.deploy.imageTag).catch(() => {
         /* image may not exist */
       });
     }

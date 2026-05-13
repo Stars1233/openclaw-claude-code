@@ -78,6 +78,11 @@ program
   .description('Start standalone embedded server (for use without OpenClaw)')
   .option('-p, --port <port>', 'Port', '18796')
   .option('-H, --host <host>', 'Bind address (default: 127.0.0.1, use 0.0.0.0 for remote access)')
+  .option(
+    '--ultraapp-runtime <mode>',
+    "ultraapp runtime mode: 'host' (default; spawns Node directly, no Docker) or 'docker' (uses docker build/run for isolation)",
+    'host',
+  )
   .action(async (opts) => {
     const { SessionManager } = await import('../src/session-manager.js');
     const { EmbeddedServer } = await import('../src/embedded-server.js');
@@ -97,6 +102,11 @@ program
       maxConcurrentSessions: maxSessions,
       sessionTtlMinutes: ttlMinutes,
     });
+
+    // ultraapp runtime mode (host = default, docker = opt-in for isolation)
+    const runtimeMode: 'host' | 'docker' = opts.ultraappRuntime === 'docker' ? 'docker' : 'host';
+    manager.setUltraappRuntimeMode(runtimeMode);
+    console.log(`[ultraapp] runtime mode: ${runtimeMode}`);
 
     // Boot the ultraapp reverse-proxy router on port 19000 (with fallbacks).
     // Best-effort — failure here doesn't block serve mode; ultraapp builds

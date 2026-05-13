@@ -329,9 +329,7 @@ describe('UltraappManager', () => {
     // a question, otherwise the run ends before we can drive it).
     let calls = 0;
     const sm = {
-      startSession: vi
-        .fn()
-        .mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
+      startSession: vi.fn().mockImplementation(async (cfg: { name?: string }) => ({ name: cfg.name ?? 'ultraapp-r1' })),
       sendMessage: vi.fn().mockImplementation(async () => {
         calls++;
         if (calls === 1) return { output: questionReply() };
