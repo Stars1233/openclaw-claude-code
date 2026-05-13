@@ -7,8 +7,7 @@
  * AgentDispatcher's job (S2-S4 will plug in real Claude sessions; S1 ships
  * with a mock dispatcher used by tests).
  *
- * Contract: tasks/autoloop.md §3.4 (phase machine lives inside Coder/Reviewer
- * dispatchers, not here).
+ * The phase machine lives inside the Coder/Reviewer dispatchers, not here.
  */
 
 import { EventEmitter } from 'node:events';

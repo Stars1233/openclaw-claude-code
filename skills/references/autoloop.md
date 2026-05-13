@@ -5,7 +5,7 @@ the **Planner** to design a plan; on your approval, the Planner spawns the
 **Coder** + **Reviewer** subloop, monitors it, and pushes you (wechat →
 whatsapp → email fallback chain) only when something needs your attention.
 
-Design rationale: `tasks/autoloop.md`. This page is the operator reference.
+This page is the operator reference.
 
 ## When to use
 

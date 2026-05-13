@@ -1,7 +1,5 @@
 /**
  * Runner-level types for autoloop (three-agent architecture).
- *
- * Contract: tasks/autoloop.md.
  */
 
 import type { AnyAutoloopMessage, PushChannel, PushLevel } from './messages.js';

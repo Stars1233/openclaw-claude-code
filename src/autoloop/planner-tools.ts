@@ -14,9 +14,9 @@
  * runner-state mutations. Multiple blocks per turn are allowed and processed
  * in order.
  *
- * The naming intentionally mirrors tasks/autoloop.md §4.2 so a future
- * MCP-based implementation can swap the parser for real tool dispatch
- * without changing any Planner-facing semantics.
+ * The naming is stable so a future MCP-based implementation can swap the
+ * parser for real tool dispatch without changing any Planner-facing
+ * semantics.
  */
 
 import { type AnyAutoloopMessage, Msg, type PushChannel, type PushLevel } from './messages.js';

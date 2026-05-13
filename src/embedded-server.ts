@@ -577,8 +577,7 @@ export class EmbeddedServer {
 
       // ─── Autoloop — list / state / push log / SSE events ─────
       //
-      // Front-end contract (per tasks/autoloop.md §9). Webchat opens these
-      // when rendering a 3-pane Orchestrator view.
+      // Front-end contract used by the dashboard's 3-pane Orchestrator view.
 
       if (path === '/autoloop/list') {
         json(200, { ok: true, runs: this.manager.autoloopList() });

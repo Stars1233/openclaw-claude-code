@@ -1121,7 +1121,7 @@ const plugin = {
     api.registerTool({
       name: 'autoloop_start',
       description:
-        'Start a v2 autoloop run in chat mode. The user converses with the persistent Planner (Claude Opus by default) to design plan.md and goal.json; subagents (Coder/Reviewer) are spawned later via the Planner when the plan is ready. Returns a run_id and the Planner session name. See tasks/autoloop.md for the architecture.',
+        'Start a v2 autoloop run in chat mode. The user converses with the persistent Planner (Claude Opus by default) to design plan.md and goal.json; subagents (Coder/Reviewer) are spawned later via the Planner when the plan is ready. Returns a run_id and the Planner session name. See skills/references/autoloop.md for the operator reference.',
       parameters: {
         type: 'object',
         properties: {

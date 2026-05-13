@@ -384,8 +384,6 @@ for `/council/{list,<id>/state,<id>/events}`.
 
 - Build now `rm -rf dist` before `tsc` so renamed/relocated sources can't
   leave stale artefacts behind.
-- `tasks/` is in `.gitignore` — internal design / WIP notes live locally
-  only.
 
 ## [3.5.3] - 2026-05-10
 
@@ -593,7 +591,7 @@ New first-class feature alongside session / council / ultraplan / ultrareview. G
 - **Tools**: `autoloop_start`, `autoloop_status`, `autoloop_list`, `autoloop_inject`, `autoloop_stop`
 - **SSE endpoint**: `GET /autoloop/<id>/events` streams phase / state / push events. Frontend (webchat) deferred to a future release
 
-Design doc: `tasks/autoloop.md`. Reference: `skills/references/autoloop.md`.
+Reference: `skills/references/autoloop.md`.
 
 **Defaults** (cost not optimised per user direction): `propose=opus, ratchet=opus`, `max_iters=200`, `max_cost_usd=200`, `compress_every_k=10`, `per_iter_timeout_ms=600000`. Override via `goal.json.termination` or `autoloop_start` parameters.
 

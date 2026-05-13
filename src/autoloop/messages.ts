@@ -1,8 +1,6 @@
 /**
  * Inbox message envelope + discriminated union of v2 message types.
  *
- * Contract: see tasks/autoloop.md §3.3.
- *
  * Wire format: serialised as JSON in InboxManager's `text` field, with
  * `summary` set to the message `type` for human-readable inbox listings.
  * Routing addressing convention: session name = `autoloop:<run_id>:<role>`,
