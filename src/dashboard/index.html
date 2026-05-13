@@ -554,6 +554,36 @@
         font-weight: 600;
       }
       #forgeStartBuild:disabled { opacity: 0.4; cursor: not-allowed; }
+      .forge-versions { margin-top: 12px; }
+      .forge-versions h4 { margin: 0 0 6px 0; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+      .version-list { list-style: none; padding: 0; margin: 0; }
+      .version-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 12px;
+        border-top: 1px solid var(--border);
+      }
+      .version-tag {
+        background: var(--surface-2);
+        padding: 1px 6px;
+        border-radius: 3px;
+        font-family: monospace;
+        font-weight: 600;
+      }
+      .version-meta { color: var(--muted); }
+      .version-row a { color: var(--accent); text-decoration: none; word-break: break-all; }
+      .version-row button {
+        margin-left: auto;
+        padding: 2px 8px;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .version-row button:disabled { opacity: 0.4; cursor: not-allowed; }
     </style>
   </head>
   <body>
@@ -827,6 +857,7 @@
                 <span class="forge-spec-msg" id="forgeSpecMsg"></span>
               </div>
               <button id="forgeStartBuild" disabled>Start Build</button>
+              <div id="forgeVersions" class="forge-versions"></div>
             </div>
           </div>
         `;
@@ -931,6 +962,18 @@
           // resting state from which a (re)build is sensible.
           const lockedModes = new Set(['interview', 'queued', 'building']);
           btn.disabled = lockedModes.has(m);
+        }
+        // Hint the input's role per mode (interview = answer; done = feedback).
+        const ff = $('forgeFreeform');
+        if (ff) {
+          ff.placeholder =
+            m === 'done'
+              ? 'Done — type feedback (e.g. "make button green" / "add a thumbnail step")'
+              : 'Free-form input (or click an option above and Submit)';
+        }
+        // Refresh versions panel when entering a state that may have artifacts.
+        if (m === 'done' || m === 'build-complete') {
+          void forgeRefreshVersions();
         }
       }
 
@@ -1079,6 +1122,18 @@
 
         const freeform = ff.value.trim();
         const selected = state.forge.currentQuestion?._selected;
+        // Mode-aware routing: in done mode, free-form text is feedback,
+        // not an interview answer. /feedback runs through the classifier
+        // and routes to patcher / spec-delta / structural-suggest.
+        if (state.forge.mode === 'done' && freeform) {
+          await fetch('/ultraapp/' + encodeURIComponent(runId) + '/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: freeform }),
+          });
+          ff.value = '';
+          return;
+        }
         if (freeform || selected) {
           const body = freeform ? { value: selected ?? '', freeform } : { value: selected };
           await fetch('/ultraapp/' + encodeURIComponent(runId) + '/answer', {
@@ -1088,6 +1143,58 @@
           });
           ff.value = '';
           state.forge.currentQuestion = null;
+        }
+      }
+
+      async function forgeRefreshVersions() {
+        const runId = state.forge.runId;
+        if (!runId) return;
+        const panel = $('forgeVersions');
+        if (!panel) return;
+        try {
+          const r = await fetch('/ultraapp/' + encodeURIComponent(runId) + '/artifacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          const j = await r.json();
+          if (!j.ok || !j.artifacts || j.artifacts.length === 0) {
+            panel.innerHTML = '';
+            return;
+          }
+          const html = j.artifacts
+            .map((a) => {
+              const isDeployed = !!a.deploy;
+              const url = a.deploy?.url || '';
+              return `<li class="version-row">
+                <span class="version-tag">${escapeHtml(a.version)}</span>
+                <span class="version-meta">${a.builtAt ? new Date(a.builtAt).toLocaleString() : ''}</span>
+                ${isDeployed ? `<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(url)}</a>` : '<span class="version-meta">(not deployed)</span>'}
+                ${isDeployed ? `<button data-promote="${escapeHtml(a.version)}">Promote</button>` : ''}
+              </li>`;
+            })
+            .join('');
+          panel.innerHTML = '<h4>Versions</h4><ul class="version-list">' + html + '</ul>';
+          panel.querySelectorAll('button[data-promote]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const v = btn.dataset.promote;
+              if (!confirm(`Promote ${v} as the deployed version?`)) return;
+              btn.disabled = true;
+              const r = await fetch('/ultraapp/' + encodeURIComponent(runId) + '/promote-version', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ version: v }),
+              });
+              const j = await r.json();
+              if (!j.ok) {
+                renderChatEntry({ role: 'system', kind: 'error', text: '[error] promote: ' + (j.error || 'unknown') });
+              }
+              btn.disabled = false;
+              await forgeRefreshVersions();
+            });
+          });
+        } catch (err) {
+          /* best-effort */
         }
       }
 
