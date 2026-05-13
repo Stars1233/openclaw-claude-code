@@ -459,7 +459,7 @@ export class EmbeddedServer {
 
       // ─── Login redirect ─────────────────────────────────────────
       //
-      // First-visit pattern for hosted access (e.g., clawd.enderfga.cn):
+      // First-visit pattern for hosted access:
       // visit /login?token=<T>&redirect=<path>, which the auth gate above has
       // already validated. Server sets the auth cookie and 302s to redirect,
       // so the bookmark URL never contains the token (no referrer / CF log /
