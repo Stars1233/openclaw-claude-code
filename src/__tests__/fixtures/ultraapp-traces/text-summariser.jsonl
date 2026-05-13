@@ -1,0 +1,11 @@
+{"kind":"claude-question","envelope":{"question":"What's the app's slug?","options":[{"label":"text-summariser","value":"text-summariser"}],"recommended":"text-summariser","freeformAccepted":true}}
+{"kind":"user-answer","value":"text-summariser"}
+{"kind":"claude-tool","tool":"update_spec","args":[{"op":"replace","path":"/meta/name","value":"text-summariser"},{"op":"replace","path":"/meta/title","value":"Text Summariser"},{"op":"replace","path":"/meta/description","value":"Paste a long text, get a 200-word summary."}]}
+{"kind":"claude-question","envelope":{"question":"Confirm the input shape: a single text blob?","options":[{"label":"yes — single text input","value":"text"}],"recommended":"text","freeformAccepted":false}}
+{"kind":"user-answer","value":"text"}
+{"kind":"claude-tool","tool":"update_spec","args":[{"op":"add","path":"/inputs/-","value":{"name":"document","type":"text","required":true,"description":"The text to summarise."}}]}
+{"kind":"claude-question","envelope":{"question":"And the output is plain text (the summary)?","options":[{"label":"yes — plain text","value":"text"}],"recommended":"text","freeformAccepted":false}}
+{"kind":"user-answer","value":"text"}
+{"kind":"claude-tool","tool":"update_spec","args":[{"op":"add","path":"/outputs/-","value":{"name":"summary","type":"text","description":"A 200-word summary of the input."}},{"op":"add","path":"/pipeline/steps/-","value":{"id":"summarise","description":"Call the LLM to summarise the document.","inputs":["inputs.document"],"outputs":["summary"],"hints":{"likelyTools":["anthropic-sdk"]},"validates":{"outputType":"text"}}},{"op":"replace","path":"/runtime","value":{"needsLLM":true,"llmProviders":["anthropic"],"binaryDeps":[],"estimatedRuntimeSec":10,"estimatedFileSizeMB":0}},{"op":"replace","path":"/ui","value":{"layout":"single-form","showProgress":false}}]}
+{"kind":"claude-tool","tool":"check_completeness"}
+{"kind":"claude-complete","summary":"AppSpec captured: text-summariser. Single-step LLM pipeline."}

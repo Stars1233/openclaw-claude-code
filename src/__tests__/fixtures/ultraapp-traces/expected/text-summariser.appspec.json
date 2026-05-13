@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "text-summariser",
+    "title": "Text Summariser",
+    "description": "Paste a long text, get a 200-word summary."
+  },
+  "inputs": [
+    {
+      "name": "document",
+      "type": "text",
+      "required": true,
+      "description": "The text to summarise."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "summary",
+      "type": "text",
+      "description": "A 200-word summary of the input."
+    }
+  ],
+  "pipeline": {
+    "steps": [
+      {
+        "id": "summarise",
+        "description": "Call the LLM to summarise the document.",
+        "inputs": ["inputs.document"],
+        "outputs": ["summary"],
+        "hints": {
+          "likelyTools": ["anthropic-sdk"]
+        },
+        "validates": {
+          "outputType": "text"
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "needsLLM": true,
+    "llmProviders": ["anthropic"],
+    "binaryDeps": [],
+    "estimatedRuntimeSec": 10,
+    "estimatedFileSizeMB": 0
+  },
+  "ui": {
+    "layout": "single-form",
+    "showProgress": false
+  }
+}

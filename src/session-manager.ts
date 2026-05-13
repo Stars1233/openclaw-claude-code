@@ -158,6 +158,9 @@ import type { AutoloopState, PushPolicy } from './autoloop/types.js';
 import { DEFAULT_PUSH_POLICY } from './autoloop/types.js';
 import { Msg as AutoloopMsg, type PushChannel, type PushLevel } from './autoloop/messages.js';
 import { appendPushLog, notifyUserFallbackChain } from './autoloop/notify.js';
+import { UltraappManager } from './ultraapp/manager.js';
+import { UltraappStore, defaultStoreRoot } from './ultraapp/store.js';
+import type { UltraappRouter } from './ultraapp/router.js';
 import {
   PERSIST_DISK_TTL_MS,
   DEBOUNCED_SAVE_MS,
@@ -326,6 +329,9 @@ export class SessionManager {
   private _circuitBreaker = new CircuitBreaker();
   private _inbox = new InboxManager();
   private logger: Logger;
+  private _ultraappManager: UltraappManager | null = null;
+  private _ultraappRouter: UltraappRouter | null = null;
+  private _ultraappRuntimeMode: 'host' | 'docker' = 'host';
 
   constructor(config?: Partial<PluginConfig>, logger?: Logger) {
     this.logger = logger || createConsoleLogger('SessionManager');
@@ -355,6 +361,51 @@ export class SessionManager {
 
     // Start TTL cleanup timer
     this.cleanupTimer = setInterval(() => this._cleanupIdleSessions(), CLEANUP_INTERVAL_MS);
+  }
+
+  /**
+   * Lazily-constructed ultraapp manager. The ultraapp manager itself uses
+   * `this` as its session-manager dependency; building it lazily avoids any
+   * circular initialisation concerns.
+   */
+  getUltraappManager(): UltraappManager {
+    if (!this._ultraappManager) {
+      this._ultraappManager = new UltraappManager({
+        store: new UltraappStore(defaultStoreRoot()),
+        sessionManager: this,
+        router: this._ultraappRouter ?? undefined,
+        runtimeMode: this._ultraappRuntimeMode,
+      });
+    }
+    return this._ultraappManager;
+  }
+
+  /**
+   * Inject a started UltraappRouter so deploy + lifecycle wiring becomes
+   * available. Must be called BEFORE the first `getUltraappManager()` call —
+   * the manager is constructed lazily and reads the router reference at that
+   * point. Production: bin/cli.ts wires this. Tests: leave unset to keep
+   * v0.2-style "build-complete is resting state" behaviour.
+   */
+  setUltraappRouter(router: UltraappRouter): void {
+    if (this._ultraappManager) {
+      throw new Error('setUltraappRouter must be called before getUltraappManager');
+    }
+    this._ultraappRouter = router;
+  }
+
+  /**
+   * Pick the ultraapp runtime mode. 'host' (default) spawns the generated
+   * app as a regular Node process — works anywhere Node works, no Docker
+   * required. 'docker' uses `docker build` + `docker run` for isolation,
+   * intended for shared production hosts. Must be called before the first
+   * `getUltraappManager()` call.
+   */
+  setUltraappRuntimeMode(mode: 'host' | 'docker'): void {
+    if (this._ultraappManager) {
+      throw new Error('setUltraappRuntimeMode must be called before getUltraappManager');
+    }
+    this._ultraappRuntimeMode = mode;
   }
 
   // ─── Session Lifecycle ─────────────────────────────────────────────────
@@ -1375,7 +1426,36 @@ export class SessionManager {
     try {
       const dir = path.dirname(SessionManager.PID_FILE);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(SessionManager.PID_FILE, JSON.stringify(Object.fromEntries(this._activePids)));
+      // The PID file is host-shared: any SessionManager (gateway, dashboard,
+      // standalone test runner) writes here. We MUST NOT overwrite entries
+      // owned by another live SessionManager process — that would erase its
+      // record of pids it spawned, and its next cleanup pass might decide
+      // they're orphans and kill them. Read-merge-write keyed by ownerPid.
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, unknown>;
+      } catch {
+        /* missing or malformed — start fresh */
+      }
+      const merged: Record<string, { pid: number; ownerPid: number; since: string }> = {};
+      const now = new Date().toISOString();
+      // Keep entries from OTHER live owners untouched
+      for (const [name, raw] of Object.entries(existing)) {
+        if (typeof raw === 'number') continue; // legacy format — drop on first save
+        const entry = raw as { pid?: number; ownerPid?: number; since?: string };
+        if (typeof entry.pid !== 'number' || typeof entry.ownerPid !== 'number') continue;
+        if (entry.ownerPid === process.pid) continue; // ours; we're about to rewrite
+        merged[name] = {
+          pid: entry.pid,
+          ownerPid: entry.ownerPid,
+          since: entry.since ?? now,
+        };
+      }
+      // Add OUR current entries
+      for (const [name, pid] of this._activePids) {
+        merged[name] = { pid, ownerPid: process.pid, since: now };
+      }
+      fs.writeFileSync(SessionManager.PID_FILE, JSON.stringify(merged));
     } catch {
       /* best effort */
     }
@@ -1410,8 +1490,45 @@ export class SessionManager {
   private _cleanupOrphanedPids(): void {
     try {
       if (!fs.existsSync(SessionManager.PID_FILE)) return;
-      const data = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, number>;
-      for (const [name, pid] of Object.entries(data)) {
+      const data = JSON.parse(fs.readFileSync(SessionManager.PID_FILE, 'utf8')) as Record<string, unknown>;
+      for (const [name, raw] of Object.entries(data)) {
+        // Resolve entry shape: legacy = number; current = { pid, ownerPid, since }.
+        let pid: number;
+        let ownerPid: number | null;
+        if (typeof raw === 'number') {
+          pid = raw;
+          ownerPid = null; // unknown owner — treat conservatively (skip kill)
+        } else if (raw && typeof raw === 'object') {
+          const e = raw as { pid?: number; ownerPid?: number };
+          if (typeof e.pid !== 'number') continue;
+          pid = e.pid;
+          ownerPid = typeof e.ownerPid === 'number' ? e.ownerPid : null;
+        } else {
+          continue;
+        }
+        // Cross-process safety: if this PID has a known owner SessionManager
+        // and that owner is still alive, the child is NOT an orphan — it's
+        // owned by another live manager. Only kill if owner is dead or unknown
+        // AND the conservative legacy-format path has been ruled out.
+        if (ownerPid !== null && ownerPid !== process.pid) {
+          let ownerAlive = false;
+          try {
+            process.kill(ownerPid, 0);
+            ownerAlive = true;
+          } catch {
+            /* owner dead */
+          }
+          if (ownerAlive) {
+            this.logger.info(`PID ${pid} (session: ${name}) owned by live SessionManager pid=${ownerPid} — skipping`);
+            continue;
+          }
+        } else if (ownerPid === null) {
+          // Legacy format with no owner info — too risky to kill if a host
+          // shares the file across managers. Skip; the entry will be cleaned
+          // up on the next save (read-merge-write drops legacy format).
+          this.logger.info(`PID ${pid} (session: ${name}) is legacy-format (no ownerPid) — skipping kill`);
+          continue;
+        }
         try {
           process.kill(pid, 0); // check if alive
           // Alive — but verify it's actually a coding CLI, not a recycled PID

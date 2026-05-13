@@ -102,9 +102,13 @@ await manager.autoloopChat("my-run", "go");
 
 SSE stream at `GET /autoloop/<id>/events` (the upcoming 3-pane UI subscribes here). See [`skills/references/autoloop.md`](./skills/references/autoloop.md) for the full operator reference: tool list, push policy, ledger layout, smoke test.
 
+### ultraapp (Forge tab — v1.0)
+
+Turn a structured Q&A interview into a deployable web app. Open the dashboard's Forge tab, click `+ New`, walk through the AppSpec interview (Claude Opus asks one question per turn with recommended options), click `Start Build` to dispatch a 3-agent council that synthesises a complete codebase + a fix-on-failure helper that drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green, then watch the share card appear in chat with the live URL at `http://localhost:19000/forge/<slug>/`. A per-build Haiku narrator translates the structured event stream into short, language-matched chat updates so the user knows what's happening without reading raw event JSON. Sidebar items grow start/stop/delete controls; `Make Public…` shows copy-pastable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets so you can expose the app yourself. Post-deploy chat input is classified (cosmetic / spec-delta / structural) — cosmetic feedback runs the patcher (Opus diff + validate + auto-revert + version snapshot); spec-delta flips back to a focused interview; structural suggests a new run. A JSONL reference-trace replayer + frozen AppSpec snapshots guard the interview engine against regressions (`tsx test-ultraapp-integration.ts --trace=all`). See [`docs/superpowers/specs/2026-05-11-ultraapp-design.md`](./docs/superpowers/specs/2026-05-11-ultraapp-design.md).
+
 ### Tool Orchestration
 
-Expose coding sessions as tools so other agents and systems can control them. The runtime registers 40 tools, including:
+Expose coding sessions as tools so other agents and systems can control them. The runtime registers 55 tools, including:
 
 ```txt
 session_start         session_send         coding_session_status
@@ -113,6 +117,8 @@ team_send             team_list            coding_agents_list
 council_start         council_review       council_accept
 ultraplan_start       ultrareview_start
 autoloop_start        autoloop_chat        autoloop_reset_agent
+ultraapp_new          ultraapp_answer      ultraapp_build_start
+ultraapp_feedback     ultraapp_promote_version
 ```
 
 ---
@@ -147,6 +153,20 @@ const result = await manager.sendMessage("task", "Fix the failing tests");
 clawo council start "Refactor the API layer and add tests"
 ```
 
+### Quick Start: ultraapp
+
+Turn a structured Q&A interview into a deployed web app:
+
+1. `clawo serve` (boots the dashboard at `:18796` and the ultraapp router at `:19000`)
+2. Open `http://127.0.0.1:18796/dashboard?token=$(cat ~/.openclaw/server-token)` and pick the **Forge** tab
+3. Click **+ New** and walk the interview (≈ 5–8 questions; each has a recommended option — Submit it unless you disagree)
+4. Click **Start Build**. Council writes a complete codebase; fix-on-failure drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green; deploy registers the slug with the router.
+5. The share card appears in chat with the live URL: `http://127.0.0.1:19000/forge/<slug>/`. Hit it from a browser to use your app.
+6. Iterate via chat: type "make button green" → cosmetic patch (Opus diff + validate + version snapshot); type "also output a thumbnail" → spec-delta focused interview + auto-rerun. Promote any version from the AppSpec column.
+7. Want to share? Click **Make Public…** for copy-pasteable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+
+Driveable headlessly via the same HTTP routes the dashboard uses (`/ultraapp/new` → `/answer` → `/build` → `/feedback`) — see `skills/ultraapp/SKILL.md` for the interview contract and `src/__tests__/fixtures/ultraapp-traces/_format.md` for the JSONL trace format. Every operation is also exposed as an MCP tool (`ultraapp_new`, `ultraapp_answer`, `ultraapp_build_start`, `ultraapp_feedback`, `ultraapp_promote_version`, etc.) so any MCP host can drive ultraapp end-to-end.
+
 ### As an OpenClaw plugin
 
 If you run OpenClaw, Claw Orchestrator installs as a managed plugin. The same tools (`session_start`, `team_send`, `council_start`, ...) become available to every OpenClaw agent.
@@ -159,7 +179,7 @@ This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and 
 
 ### As an MCP server (Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose)
 
-Every host that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can pick up the orchestrator's full toolset (41 tools — sessions, council, ultraplan, ultrareview, autoloop, codex, inbox) over stdio.
+Every host that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can pick up the orchestrator's full toolset (55 tools — sessions, council, ultraplan, ultrareview, autoloop, ultraapp, codex, inbox) over stdio.
 
 ```bash
 npm install -g @enderfga/claw-orchestrator
@@ -213,7 +233,7 @@ Every one of these hosts speaks the standard MCP stdio config. Add `clawo-mcp` a
 **Notes**
 
 - Hosts prefix MCP tool names with the server slug (e.g. `mcp_clawo_session_start` in Hermes). The model sees the prefixed name; you don't need to call it manually.
-- `CLAWO_MCP_TOOLS` (comma-separated allowlist) keeps the exposed surface tight when the host has a tight tool budget. Without it, all 41 tools are advertised.
+- `CLAWO_MCP_TOOLS` (comma-separated allowlist) keeps the exposed surface tight when the host has a tight tool budget. Without it, all 55 tools are advertised.
 - Hosts do not forward arbitrary shell env vars to MCP servers — list every API key your engines need (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.) explicitly under `env`.
 
 Full reference: [`skills/references/mcp.md`](./skills/references/mcp.md).

@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "vlog-cutter",
+    "title": "Vlog Silence Cutter",
+    "description": "Take a long video, auto-detect and remove silent gaps longer than a threshold, then concat the kept segments into a single MP4."
+  },
+  "inputs": [
+    {
+      "name": "source_video",
+      "type": "file",
+      "accept": [
+        "video/mp4",
+        "video/quicktime",
+        "video/x-matroska",
+        ".mp4",
+        ".mov",
+        ".mkv"
+      ],
+      "required": true,
+      "description": "Long-form source video (vlog raw footage)."
+    },
+    {
+      "name": "min_gap_seconds",
+      "type": "number",
+      "required": false,
+      "default": 1.5,
+      "min": 0.3,
+      "max": 10,
+      "step": 0.1,
+      "description": "Cut any silent gap longer than this many seconds. Lower = more aggressive trim."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "edited_video",
+      "type": "file",
+      "description": "Final cut MP4 with silent gaps removed."
+    }
+  ],
+  "pipeline": {
+    "steps": [
+      {
+        "id": "probe",
+        "description": "Read source video metadata (duration, resolution, fps, audio sample rate).",
+        "inputs": [
+          "source_video"
+        ],
+        "outputs": [
+          "metadata.json"
+        ],
+        "hints": {
+          "tool": "ffprobe",
+          "command": "ffprobe -v error -print_format json -show_format -show_streams <input>"
+        },
+        "validates": {
+          "outputType": "json"
+        }
+      },
+      {
+        "id": "detect_silence",
+        "description": "Run ffmpeg silencedetect on the audio track to log every silent interval at noise=-30dB.",
+        "inputs": [
+          "source_video"
+        ],
+        "outputs": [
+          "silence_log.txt"
+        ],
+        "hints": {
+          "tool": "ffmpeg",
+          "command": "ffmpeg -i <input> -af silencedetect=noise=-30dB:d=<min_gap> -f null - 2> silence_log.txt"
+        },
+        "validates": {
+          "outputType": "text"
+        }
+      },
+      {
+        "id": "compute_keep_intervals",
+        "description": "Parse silence_log.txt for silence_start/silence_end pairs; invert them against [0, duration] to produce a list of keep-intervals.",
+        "inputs": [
+          "silence_log.txt",
+          "metadata.json"
+        ],
+        "outputs": [
+          "keep_intervals.json"
+        ],
+        "hints": {
+          "tool": "python3 or node",
+          "logic": "regex 'silence_start: X' and 'silence_end: Y'; build kept segments as gaps between them"
+        },
+        "validates": {
+          "outputType": "json"
+        }
+      },
+      {
+        "id": "cut_and_concat",
+        "description": "Build a single ffmpeg filter_complex that trims each keep-interval from the source and concats them in order; re-encode H.264 CRF 23 preset fast + AAC.",
+        "inputs": [
+          "source_video",
+          "keep_intervals.json"
+        ],
+        "outputs": [
+          "edited_video"
+        ],
+        "hints": {
+          "tool": "ffmpeg",
+          "command": "ffmpeg -i <input> -filter_complex '<trim+concat per interval>' -c:v libx264 -crf 23 -preset fast -c:a aac <output.mp4>"
+        },
+        "validates": {
+          "outputType": "file"
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "needsLLM": false,
+    "binaryDeps": [
+      "ffmpeg"
+    ],
+    "estimatedRuntimeSec": 900,
+    "estimatedFileSizeMB": 400,
+    "typicalInputDurationMin": 45
+  },
+  "ui": {
+    "layout": "single-form",
+    "showProgress": true,
+    "accentColor": "#ef4444"
+  },
+  "params": {
+    "silence_noise_db": -30,
+    "min_gap_seconds": 1.5,
+    "encoding": {
+      "video_codec": "libx264",
+      "audio_codec": "aac",
+      "crf": 23,
+      "preset": "fast"
+    }
+  }
+}
