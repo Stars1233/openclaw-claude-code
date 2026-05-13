@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isComplete, validateAppSpec, makeEmptySpec, type AppSpec } from '../../ultraapp/spec.js';
+import {
+  isComplete,
+  validateAppSpec,
+  validateAppSpecShape,
+  makeEmptySpec,
+  type AppSpec,
+} from '../../ultraapp/spec.js';
 
 describe('makeEmptySpec', () => {
   it('produces a valid skeleton with version, runId, timestamps, and empty arrays', () => {
@@ -42,6 +48,36 @@ describe('validateAppSpec', () => {
     const spec = completeSpec();
     spec.pipeline.steps = [stepRef('a', ['ghost.out'])];
     expect(() => validateAppSpec(spec)).toThrow(/unknown ref/i);
+  });
+});
+
+describe('validateAppSpecShape', () => {
+  it('accepts a fully-formed spec', () => {
+    expect(() => validateAppSpecShape(completeSpec())).not.toThrow();
+  });
+  it('accepts a partial spec (no inputs, dangling step refs)', () => {
+    // The whole point of the lax shape check: tolerate intermediate
+    // interview state where Claude has added a step but not yet declared
+    // the input it references.
+    const spec = makeEmptySpec('run-1');
+    spec.meta.name = 'demo';
+    spec.pipeline.steps = [stepRef('a', ['inputs.notyetdeclared'])];
+    expect(() => validateAppSpecShape(spec)).not.toThrow();
+  });
+  it('still rejects bad meta.name', () => {
+    const spec = completeSpec();
+    spec.meta.name = 'Has Spaces';
+    expect(() => validateAppSpecShape(spec)).toThrow(/meta\.name/);
+  });
+  it('still rejects empty runId', () => {
+    const spec = completeSpec();
+    spec.runId = '';
+    expect(() => validateAppSpecShape(spec)).toThrow(/runId/);
+  });
+  it('still rejects bad version', () => {
+    const spec = completeSpec();
+    (spec as { version: number }).version = 2;
+    expect(() => validateAppSpecShape(spec)).toThrow(/version/);
   });
 });
 

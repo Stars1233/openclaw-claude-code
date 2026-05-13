@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { type AppSpec, makeEmptySpec, validateAppSpec } from './spec.js';
+import { type AppSpec, makeEmptySpec, validateAppSpecShape } from './spec.js';
 
 export type RunMode =
   | 'interview'
@@ -117,7 +117,10 @@ export class UltraappStore {
 
   async writeSpec(runId: string, spec: AppSpec, source: SpecHistoryEntry['source'] = 'interview'): Promise<void> {
     spec.updatedAt = new Date().toISOString();
-    validateAppSpec(spec);
+    // Lax shape-only check: cross-ref + DAG strict checks happen at startBuild,
+    // not on every interview patch. Claude iterates incrementally and transient
+    // invalid states (e.g., a step refs an input not yet declared) are normal.
+    validateAppSpecShape(spec);
     const dir = this.runDir(runId);
     await fsp.writeFile(path.join(dir, 'spec.json'), JSON.stringify(spec, null, 2));
     const entry: SpecHistoryEntry = { ts: spec.updatedAt, source, spec };

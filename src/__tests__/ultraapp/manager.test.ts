@@ -323,6 +323,34 @@ describe('UltraappManager', () => {
     expect(chat.some((e) => e.kind === 'answer' && e.text.includes('hi'))).toBe(true);
   });
 
+  it('startBuild rejects when strict spec validation fails (cross-ref to undeclared input)', async () => {
+    const sm = fakeSessionManager(questionReply());
+    const mgr = new UltraappManager({ store, sessionManager: sm as never });
+    const id = await mgr.createRun();
+    // Drive a spec into a state that passes lax shape but fails strict cross-ref:
+    // a pipeline step references an input that was never declared.
+    await mgr.applySpecEdit(id, [
+      { op: 'replace', path: '/meta/name', value: 'demo' },
+      {
+        op: 'add',
+        path: '/pipeline/steps/-',
+        value: {
+          id: 's1',
+          description: 'noop',
+          inputs: ['inputs.notdeclared'],
+          outputs: ['out'],
+          hints: {},
+          validates: { outputType: 'text' },
+        },
+      },
+    ]);
+    // Lax check let it land on disk; strict check at startBuild should reject.
+    await expect(mgr.startBuild(id)).rejects.toThrow(/unknown ref/i);
+    const state = await store.readState(id);
+    // Mode unchanged (still 'interview'); no transition to 'queued'
+    expect(state.mode).toBe('interview');
+  });
+
   it('startBuild marks failed when council fails', async () => {
     const councilMod = await import('../../ultraapp/council-adapter.js');
     const fixMod = await import('../../ultraapp/fix-on-failure.js');

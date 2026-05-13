@@ -79,7 +79,14 @@ export function makeEmptySpec(runId: string): AppSpec {
   };
 }
 
-export function validateAppSpec(spec: AppSpec): void {
+/**
+ * Lax shape check for intermediate AppSpec writes during interview iteration.
+ * Catches obviously-broken state but tolerates partial pipelines, references
+ * to inputs not yet declared, etc. — Claude builds the spec incrementally and
+ * transient invalid states are expected. Strict cross-ref + DAG check happens
+ * at startBuild via {@link validateAppSpec}.
+ */
+export function validateAppSpecShape(spec: AppSpec): void {
   if (spec.version !== 1) throw new Error('AppSpec.version must be 1');
   if (typeof spec.runId !== 'string' || spec.runId.length === 0) {
     throw new Error('AppSpec.runId required');
@@ -87,6 +94,16 @@ export function validateAppSpec(spec: AppSpec): void {
   if (spec.meta.name && !NAME_RE.test(spec.meta.name)) {
     throw new Error('AppSpec.meta.name must match [a-z0-9][a-z0-9-]{2,31}');
   }
+}
+
+/**
+ * Strict validation: shape + every pipeline step's input refs must resolve to
+ * a declared input or a prior step + the pipeline DAG must be acyclic. Called
+ * at startBuild; do NOT call from writeSpec (that fires on every interview
+ * patch and Claude iterates incrementally).
+ */
+export function validateAppSpec(spec: AppSpec): void {
+  validateAppSpecShape(spec);
   const stepIds = new Set(spec.pipeline.steps.map((s) => s.id));
   const inputNames = new Set(spec.inputs.map((i) => i.name));
   for (const step of spec.pipeline.steps) {

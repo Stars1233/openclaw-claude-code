@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AppSpec } from './spec.js';
+import { type AppSpec, validateAppSpec } from './spec.js';
 import { type UltraappStore, type ChatEntry } from './store.js';
 import { parseInterviewReply, type QuestionEnvelope } from './interview-parser.js';
 import { runToolCalls } from './interview-tools.js';
@@ -157,6 +157,20 @@ export class UltraappManager {
 
   async startBuild(runId: string): Promise<void> {
     const run = this.requireRun(runId);
+    // Strict validate before enqueueing — pipeline cross-refs + DAG must
+    // resolve. writeSpec only does the lax shape check during interview
+    // iteration; this is the gate that catches real spec errors.
+    const spec = await this.opts.store.readSpec(runId);
+    try {
+      validateAppSpec(spec);
+    } catch (e) {
+      const reason = (e as Error).message;
+      const msg = `Cannot start build: spec is invalid — ${reason}`;
+      await this.opts.store.appendChat(runId, { role: 'system', kind: 'error', text: msg });
+      this.emit(run, { type: 'chat', entry: { role: 'system', kind: 'error', text: msg } });
+      this.emit(run, { type: 'error', message: reason });
+      throw new Error(reason);
+    }
     await this.opts.store.setMode(runId, 'queued');
     const text = 'Build queued.';
     await this.opts.store.appendChat(runId, { role: 'system', kind: 'narrator', text });
