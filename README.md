@@ -189,17 +189,7 @@ with on-disk transcripts and registry entries.
 clawo serve   # dashboard at :18796, router at :19000
 ```
 
-<<<<<<< HEAD
-Open the dashboard, pick **Forge → + New**, walk the interview (≈5–8 questions, each with a recommended option), click **Start Build**. The share card lands in chat with the live URL. Iterate via chat for cosmetic / spec-delta changes; **Make Public…** gives Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
-=======
-1. `clawo serve` (boots the dashboard at `:18796` and the ultraapp router at `:19000`)
-2. Open the dashboard via the `/login` redirect above and pick the **Forge** tab
-3. Click **+ New** and walk the interview (≈ 5–8 questions; each has a recommended option — Submit it unless you disagree)
-4. Click **Start Build**. Council writes a complete codebase; fix-on-failure drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green; deploy registers the slug with the router.
-5. The share card appears in chat with the live URL: `http://127.0.0.1:19000/forge/<slug>/`. Hit it from a browser to use your app.
-6. Iterate via chat: type "make button green" → cosmetic patch (Opus diff + validate + version snapshot); type "also output a thumbnail" → spec-delta focused interview + auto-rerun. Promote any version from the AppSpec column.
-7. Want to share? Click **Make Public…** for copy-pasteable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
->>>>>>> dcf7f01 (docs: dashboard launchers + standalone serve guidance (v4.0.0))
+Open the dashboard via the `/login` redirect above, pick **Forge → + New**, walk the interview (≈5–8 questions, each with a recommended option), click **Start Build**. The share card lands in chat with the live URL. Iterate via chat for cosmetic / spec-delta changes; **Make Public…** gives Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
 
 Driveable headlessly via 14 MCP tools (`ultraapp_new` / `_answer` / `_build_start` / `_feedback` / `_promote_version` / …) or the matching HTTP routes — see [`skills/references/ultraapp.md`](./skills/references/ultraapp.md).
 
