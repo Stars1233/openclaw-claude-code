@@ -144,7 +144,15 @@ export class UltraappStore {
 
   async appendChat(runId: string, entry: ChatEntry): Promise<void> {
     const e: ChatEntry = { ...entry, ts: entry.ts ?? new Date().toISOString() };
-    await fsp.appendFile(path.join(this.runDir(runId), 'chat.jsonl'), JSON.stringify(e) + '\n');
+    try {
+      await fsp.appendFile(path.join(this.runDir(runId), 'chat.jsonl'), JSON.stringify(e) + '\n');
+    } catch (err) {
+      // Swallow ENOENT: the only way to hit it is if the runDir was removed
+      // out from under us, which production never does — but test teardown's
+      // rmSync can race a still-pending background appendChat from a tracked
+      // promise's microtask continuation. Surface every other error.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
   }
 
   async readChat(runId: string): Promise<ChatEntry[]> {
