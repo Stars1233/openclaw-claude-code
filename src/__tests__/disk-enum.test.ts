@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { listCouncilsFromDisk } from '../session-manager.js';
+import {
+  listCouncilsFromDisk,
+  listAutoloopsFromRegistry,
+  appendAutoloopRegistry,
+} from '../session-manager.js';
 
 describe('listCouncilsFromDisk', () => {
   let tmpDir: string;
@@ -63,5 +67,96 @@ describe('listCouncilsFromDisk', () => {
     fs.writeFileSync(path.join(tmpDir, 'notes.md'), 'random content');
     fs.writeFileSync(path.join(tmpDir, 'README'), 'not markdown');
     expect(listCouncilsFromDisk(tmpDir)).toEqual([]);
+  });
+});
+
+describe('autoloop registry', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autoloop-reg-'));
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it('round-trips one entry', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'ws'), { recursive: true });
+    appendAutoloopRegistry(file, {
+      run_id: 'r1',
+      workspace: path.join(tmpDir, 'ws'),
+      ledger_dir: path.join(tmpDir, 'ws'),
+      started_at: '2026-05-13T05:00:00.000Z',
+      planner_session: 'planner-r1',
+    });
+    const rows = listAutoloopsFromRegistry(file);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].run_id).toBe('r1');
+    expect(rows[0].planner_session).toBe('planner-r1');
+  });
+
+  it('returns [] when the registry does not exist', () => {
+    expect(listAutoloopsFromRegistry(path.join(tmpDir, 'missing.jsonl'))).toEqual([]);
+  });
+
+  it('skips entries whose ledger_dir is gone (cleanup of moved/deleted workspaces)', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'alive'), { recursive: true });
+    appendAutoloopRegistry(file, {
+      run_id: 'dead',
+      workspace: '/x',
+      ledger_dir: '/tmp/never-existed-xyz123',
+      started_at: 't',
+      planner_session: 'p',
+    });
+    appendAutoloopRegistry(file, {
+      run_id: 'alive',
+      workspace: '/x',
+      ledger_dir: path.join(tmpDir, 'alive'),
+      started_at: 't',
+      planner_session: 'p',
+    });
+    const rows = listAutoloopsFromRegistry(file);
+    expect(rows.map((r) => r.run_id)).toEqual(['alive']);
+  });
+
+  it('dedups by run_id — newest entry wins', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'ws'), { recursive: true });
+    appendAutoloopRegistry(file, {
+      run_id: 'r1',
+      workspace: 'a',
+      ledger_dir: path.join(tmpDir, 'ws'),
+      started_at: '2026-05-01T00:00:00.000Z',
+      planner_session: 'p1-old',
+    });
+    appendAutoloopRegistry(file, {
+      run_id: 'r1',
+      workspace: 'b',
+      ledger_dir: path.join(tmpDir, 'ws'),
+      started_at: '2026-05-13T00:00:00.000Z',
+      planner_session: 'p1-new',
+    });
+    const rows = listAutoloopsFromRegistry(file);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].planner_session).toBe('p1-new');
+    expect(rows[0].workspace).toBe('b');
+  });
+
+  it('tolerates malformed lines', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'ws'), { recursive: true });
+    fs.writeFileSync(
+      file,
+      '{not json}\n' +
+        JSON.stringify({
+          run_id: 'good',
+          workspace: 'a',
+          ledger_dir: path.join(tmpDir, 'ws'),
+          started_at: 't',
+          planner_session: 'p',
+        }) +
+        '\n',
+    );
+    const rows = listAutoloopsFromRegistry(file);
+    expect(rows.map((r) => r.run_id)).toEqual(['good']);
   });
 });

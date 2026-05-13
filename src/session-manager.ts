@@ -210,6 +210,11 @@ interface SendOptions {
 //   - Autoloop: registry at ~/.claw-orchestrator/autoloop-registry.jsonl
 
 const DEFAULT_COUNCIL_LOG_DIR = path.join(os.homedir(), '.openclaw', 'council-logs');
+const DEFAULT_AUTOLOOP_REGISTRY = path.join(
+  os.homedir(),
+  '.claw-orchestrator',
+  'autoloop-registry.jsonl',
+);
 
 /** Public shape returned by listCouncilsFromDisk(). Mirrors a subset of CouncilSession. */
 export interface CouncilDiskRecord {
@@ -217,6 +222,56 @@ export interface CouncilDiskRecord {
   task: string;
   status: string;
   startTime: string;
+}
+
+/**
+ * One row in ~/.claw-orchestrator/autoloop-registry.jsonl. Used to make
+ * autoloop runs visible across processes (the ledger lives at
+ * <workspace>/tasks/<run_id>/, workspaces vary, so we keep a central
+ * append-only index here).
+ */
+export interface AutoloopRegistryEntry {
+  run_id: string;
+  workspace: string;
+  ledger_dir: string;
+  started_at: string;
+  planner_session: string;
+}
+
+/** Append-only registry write. Safe under concurrent writers — append is atomic for short lines. */
+export function appendAutoloopRegistry(
+  file: string,
+  entry: AutoloopRegistryEntry,
+): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, JSON.stringify(entry) + '\n');
+}
+
+/**
+ * Read the registry, dedup by run_id (newest entry wins), drop entries whose
+ * ledger_dir no longer exists on disk (cleanup of moved/deleted workspaces).
+ * Returns entries newest-first.
+ */
+export function listAutoloopsFromRegistry(
+  file = DEFAULT_AUTOLOOP_REGISTRY,
+): AutoloopRegistryEntry[] {
+  if (!fs.existsSync(file)) return [];
+  const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
+  const seen = new Set<string>();
+  const out: AutoloopRegistryEntry[] = [];
+  // Walk in reverse so the latest entry for a given run_id wins.
+  for (const line of [...lines].reverse()) {
+    try {
+      const e = JSON.parse(line) as AutoloopRegistryEntry;
+      if (seen.has(e.run_id)) continue;
+      seen.add(e.run_id);
+      if (!fs.existsSync(e.ledger_dir)) continue; // stale entry, ledger gone
+      out.push(e);
+    } catch {
+      // malformed line; skip
+    }
+  }
+  return out; // already newest-first because we reversed
 }
 
 /**
@@ -1998,6 +2053,20 @@ export class SessionManager {
       pushPolicy,
     });
     await runner.start();
+    // Record into the cross-process registry so the dashboard / another
+    // SessionManager instance can list this run even after it ends. Best
+    // effort — registry failure should not block the run.
+    try {
+      appendAutoloopRegistry(DEFAULT_AUTOLOOP_REGISTRY, {
+        run_id: opts.runId,
+        workspace: opts.workspace,
+        ledger_dir: ledgerDir,
+        started_at: runner.state.started_at,
+        planner_session: dispatcher.sessionNames.planner,
+      });
+    } catch (err) {
+      this.logger.warn?.(`[autoloop/${runId}] registry append failed: ${(err as Error).message}`);
+    }
     return {
       runId: opts.runId,
       plannerSession: dispatcher.sessionNames.planner,
@@ -2031,7 +2100,30 @@ export class SessionManager {
   }
 
   autoloopList(): AutoloopState[] {
-    return Array.from(this.autoloops.values()).map((c) => c.runner.state);
+    const inMemory = Array.from(this.autoloops.values()).map((c) => c.runner.state);
+    const inMemIds = new Set(inMemory.map((s) => s.run_id));
+    const fromDisk: AutoloopState[] = listAutoloopsFromRegistry()
+      .filter((e) => !inMemIds.has(e.run_id))
+      .map(
+        (e): AutoloopState => ({
+          run_id: e.run_id,
+          status: 'terminated',
+          iter: 0,
+          subagents_spawned: false,
+          started_at: e.started_at,
+          workspace: e.workspace,
+          ledger_dir: e.ledger_dir,
+          push_log_count: 0,
+          status_reason: 'reconstructed from registry — not in current process memory',
+          consecutive_phase_errors: 0,
+          recent_phase_errors: [],
+          metric_history: [],
+          last_activity_at: 0,
+        }),
+      );
+    return [...inMemory, ...fromDisk].sort((a, b) =>
+      (b.started_at || '').localeCompare(a.started_at || ''),
+    );
   }
 
   /**
