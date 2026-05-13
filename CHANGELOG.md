@@ -546,8 +546,8 @@ explicit decision-needed. WeChat → WhatsApp → email fallback chain
 `push_log.jsonl`, `iter/<n>/{directive,eval_output,diff.patch,verdict}.json`,
 `reviewer_sandbox/` (Reviewer cwd; runner restages per-iter artifacts).
 
-**Validated**: live e2e smoke (`scripts/smoke-autoloop.ts`) converged the
-buggy add_two scenario in one iter with Opus Planner + Sonnet × 2.
+**Validated**: live e2e smoke converged the buggy add_two scenario in one
+iter with Opus Planner + Sonnet × 2.
 
 ### Deferred (v3.5.x follow-ups)
 
