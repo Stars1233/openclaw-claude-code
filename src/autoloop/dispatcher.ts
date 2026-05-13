@@ -303,7 +303,11 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
    * refresh / cross-process / re-opening a terminated run can replay the
    * conversation instead of starting visibly blank.
    */
-  private appendChatEntry(entry: { who: 'user' | 'planner' | 'system'; text: string; ts: string }): void {
+  private appendChatEntry(entry: {
+    who: 'user' | 'planner' | 'coder' | 'reviewer' | 'system';
+    text: string;
+    ts: string;
+  }): void {
     try {
       fs.mkdirSync(this.ledgerDir, { recursive: true });
       fs.appendFileSync(path.join(this.ledgerDir, 'chat.jsonl'), JSON.stringify(entry) + '\n');
@@ -595,6 +599,15 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
       .filter(Boolean)
       .join('\n');
 
+    // Heartbeat so the dashboard's Coder pane shows "iter N started" even
+    // before Coder produces a reply — useful for liveness checks on long
+    // turns, and survives refresh because it's in chat.jsonl.
+    this.appendChatEntry({
+      who: 'coder',
+      text: `🔨 Coder iter ${env.iter} working…`,
+      ts: new Date().toISOString(),
+    });
+
     const result = await this.sendWithRecovery('coder', this.coderName, promptText);
     // A3: subprocess died (recovery retry exhausted). Surface as phase_error
     // rather than silently masquerading as a "clarification request"; the
@@ -616,6 +629,13 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     const replyText = (result.output ?? '').trim();
     const parsed = parseAgentReply(replyText);
     this.emit('coder_reply', parsed.cleaned_reply);
+    if (parsed.cleaned_reply) {
+      this.appendChatEntry({
+        who: 'coder',
+        text: parsed.cleaned_reply,
+        ts: new Date().toISOString(),
+      });
+    }
 
     const ic = extractIterComplete(parsed.calls);
     if (!ic) {
@@ -785,6 +805,14 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
       'Audit and emit `review_complete`.',
     ].join('\n');
 
+    // Heartbeat so the dashboard's Reviewer pane shows "auditing" the moment
+    // a review_request lands, instead of staying blank until the verdict.
+    this.appendChatEntry({
+      who: 'reviewer',
+      text: `🔍 Reviewer iter ${env.payload.iter} auditing…`,
+      ts: new Date().toISOString(),
+    });
+
     const result = await this.sendWithRecovery('reviewer', this.reviewerName, promptText);
     if (result.fatal) {
       this.appendDecisionLog({
@@ -803,6 +831,13 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     const replyText = (result.output ?? '').trim();
     const parsed = parseAgentReply(replyText);
     this.emit('reviewer_reply', parsed.cleaned_reply);
+    if (parsed.cleaned_reply) {
+      this.appendChatEntry({
+        who: 'reviewer',
+        text: parsed.cleaned_reply,
+        ts: new Date().toISOString(),
+      });
+    }
 
     const rc = extractReviewComplete(parsed.calls);
     if (!rc) {

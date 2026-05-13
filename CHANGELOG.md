@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.5] - 2026-05-13
+
+### Fixed — Coder / Reviewer panes were blank after refresh
+
+4.0.4 added `chat.jsonl` persistence for the Planner conversation but the
+Coder and Reviewer replies stayed SSE-only. The result: opening a run
+after a refresh / cross-process / Resume showed the Planner thread
+populated but the Coder and Reviewer panes empty until the next SSE
+event arrived — and for terminated runs, no SSE events ever come.
+
+- `dispatcher.deliverToCoder` and `dispatcher.deliverToReviewer` now
+  append every reply to `<ledger>/chat.jsonl` alongside the existing
+  `emit('coder_reply' | 'reviewer_reply', ...)` calls.
+- Each phase also writes a heartbeat entry the moment delivery starts:
+  `🔨 Coder iter N working…` / `🔍 Reviewer iter N auditing…`. Useful
+  for liveness checks on long turns (the dashboard sees activity even
+  before the agent produces output) and survives refresh because it's
+  on disk.
+- `appendChatEntry`'s `who` union widened to include `coder` and
+  `reviewer`.
+- The dashboard's `chat_history` hydration now routes entries by `who`
+  into the corresponding pane (`coder` → Coder pane, `reviewer` →
+  Reviewer pane, others → Planner pane), so refreshing a mid-iter run
+  shows the complete three-way conversation.
+
 ## [4.0.4] - 2026-05-13
 
 ### Fixed — Auth token now read per-request from disk

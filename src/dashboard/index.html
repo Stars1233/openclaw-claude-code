@@ -1498,10 +1498,29 @@
           if (histR.ok) {
             const histJ = await histR.json();
             if (histJ.ok && Array.isArray(histJ.entries)) {
-              state.autoloop.plannerLog = histJ.entries
-                .filter((e) => e && typeof e.text === 'string')
-                .map((e) => ({ who: e.who || 'planner', text: e.text, ts: e.ts || '' }));
+              // Route each persisted chat entry into its owning pane by the
+              // `who` field. 'user'/'planner'/'system' → planner pane;
+              // 'coder' → coder pane; 'reviewer' → reviewer pane. The
+              // heartbeat entries dispatcher writes at each phase start
+              // (🔨 Coder iter N working…, 🔍 Reviewer iter N auditing…)
+              // ride this routing too, so liveness is visible after a
+              // refresh without depending on the SSE channel being open.
+              const validEntries = histJ.entries.filter((e) => e && typeof e.text === 'string');
+              const planner = [],
+                coder = [],
+                reviewer = [];
+              for (const e of validEntries) {
+                const norm = { who: e.who || 'planner', text: e.text, ts: e.ts || '' };
+                if (norm.who === 'coder') coder.push(norm);
+                else if (norm.who === 'reviewer') reviewer.push(norm);
+                else planner.push(norm);
+              }
+              state.autoloop.plannerLog = planner;
+              state.autoloop.coderLog = coder;
+              state.autoloop.reviewerLog = reviewer;
               paintPlanner();
+              paintCoder();
+              paintReviewer();
             }
           }
           // For terminated runs, surface a Resume affordance under the
