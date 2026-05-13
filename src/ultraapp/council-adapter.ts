@@ -75,9 +75,10 @@ Refer to the voting protocol in section 5 of the conventions above. Vote
 [CONSENSUS: YES] only when (a) every AppSpec field is implemented, (b) every
 architectural convention is met, (c) "npm run build && npm test && docker
 build . && npm run smoke" all pass green in your worktree, AND (d) you have
-personally executed the §7g frontend gate (states + responsive + design
-system + form quality + result presentation). A green smoke test with a
-bare-bones UI is still a NO vote.
+personally executed the §7g frontend gate by capturing Chrome headless
+screenshots at BOTH 1440×900 and 375×812 and visually inspecting the PNGs
+— not by reading source code or meta tags. A green smoke test with a
+bare-bones UI, or a UI that overflows on mobile, is still a NO vote.
 `.trim();
 }
 
@@ -146,7 +147,7 @@ function buildCouncilConfig(projectDir: string, slug: string): CouncilConfig {
       {
         name: 'agent-C',
         emoji: '🟢',
-        persona: `${personaIntro} You verify and harden: smoke test, Dockerfile multi-stage, base path correctness, ESLint rule for no-server-keys, AND the §7g frontend gate (design system, four-state coverage, responsive at 375px, polished form + result presentation). You vote NO until "npm run build && npm test && docker build . && npm run smoke" all pass green AND the UI clearly meets §7a–§7f. A working but ugly app is a NO vote.`,
+        persona: `${personaIntro} You verify and harden: smoke test, Dockerfile multi-stage, base path correctness, ESLint rule for no-server-keys, AND the §7g frontend gate. The §7g gate is binding: you MUST capture Chrome headless screenshots at 1440×900 AND 375×812, open the PNGs, and verify by eye that the rendering matches §7a–§7f at BOTH viewports — particularly that mobile has no horizontal overflow and h1 wraps at word (not letter) boundaries. Reading source code or meta tags is insufficient evidence; only the screenshots count. You vote NO until "npm run build && npm test && docker build . && npm run smoke" all pass green AND your screenshots are publishable. A working but ugly app, or one that overflows on mobile, is a NO vote.`,
         engine: 'claude',
         model: 'claude-opus-4-7',
       },

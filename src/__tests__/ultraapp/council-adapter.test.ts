@@ -34,7 +34,20 @@ describe('composeCouncilPrompt', () => {
     expect(prompt).toContain('375px');
     expect(prompt).toContain('Empty');
     expect(prompt).toContain('Loading');
-    expect(prompt).toContain('would a startup ship this');
+    expect(prompt).toContain('NO vote');
+  });
+  it('§7g requires actual screenshot evidence at desktop AND 375px, not source-code review', () => {
+    // The first live demo on §7 alone produced a polished desktop but a
+    // mobile-overflow UI because agents inspected meta tags / @media
+    // queries instead of opening rendered PNGs. The gate must spell out
+    // "screenshot the rendered pixels" or it gets routed around.
+    const spec = makeEmptySpec('ua-1');
+    const prompt = composeCouncilPrompt(spec);
+    expect(prompt).toContain('screenshot');
+    expect(prompt).toContain('1440');
+    expect(prompt).toContain('chrome --headless');
+    expect(prompt).toContain('Reading the source code');
+    expect(prompt).toContain('horizontal overflow');
   });
   it('quotes the AppSpec.meta.name as the slug to use', () => {
     const spec = makeEmptySpec('ua-1');

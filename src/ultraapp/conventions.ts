@@ -199,18 +199,50 @@ Brand colors: define as CSS variables or Tailwind theme extension. Use a
 single accent color consistently across primary actions.
 AppSpec.ui.accentColor (if present) is the source of truth.
 
-### 7g. Council frontend gate (enforcement)
+### 7g. Council frontend gate (enforcement — screenshots required)
+
+**Reading the source code or the rendered HTML is NOT sufficient.** Meta
+tags, class names, and \`@media\` queries don't tell you what the page
+actually looks like. You MUST capture screenshots and look at the pixels
+before voting.
+
 Before voting [CONSENSUS: YES], EVERY agent MUST:
-1. Run the dev server in their worktree (\`npm run dev\` or equivalent) and
-   either open the app or analyse the rendered HTML/CSS.
-2. Walk through the primary user flow: load → fill form → submit →
-   loading state → result.
-3. Verify all four states (§7c) actually render — not just exist in code.
-4. Inspect at 375px width (browser devtools or CSS @media query analysis).
-5. Reject (vote NO) with specific UI feedback if the app does not pass
-   the "would a startup ship this" bar. Cite the failed criterion (7a–7f)
-   in the NO vote.
+
+1. Start the dev/preview server in their worktree (\`npm run preview\` or
+   \`npm run dev\` and wait for "ready").
+2. **Capture screenshots at TWO viewports** using Chrome headless:
+   \`\`\`
+   chrome --headless=new --hide-scrollbars --window-size=1440,900 \\
+     --virtual-time-budget=4000 --screenshot=/tmp/ua-shot-desktop.png <URL>
+   chrome --headless=new --hide-scrollbars --window-size=375,812 \\
+     --virtual-time-budget=4000 --screenshot=/tmp/ua-shot-mobile.png <URL>
+   \`\`\`
+   (\`chrome\` may be \`google-chrome\`, \`chromium\`, or
+   \`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\`.)
+3. **Open the PNG files and look at the rendering.** Confirm by eye:
+   - Desktop: layout matches §7a–§7f. Centered, generous whitespace,
+     readable type hierarchy, real icons (not emoji), polished form,
+     consistent accent colour.
+   - **Mobile (375px): NO horizontal overflow.** Every text block wraps
+     at word boundaries, not letter boundaries. The form card and all
+     inner content fit within the viewport. Section header hints
+     either fit or are hidden on mobile. The h1 fits the viewport at
+     its mobile font-size.
+4. **For each of the four states (§7c)** — empty, loading, error, success
+   — drive the app to that state (programmatically or via a saved
+   fixture) and screenshot it. Visual verification only; "the code path
+   exists" is not enough.
+5. If the screenshots reveal any §7a–§7f gap, vote NO and cite the
+   specific screenshot region and criterion. Iterate until the
+   screenshots are publishable.
+
+**Refining via meta tags / class names alone is insufficient.** A
+\`text-3xl sm:text-4xl\` h1 may still overflow on 375px if the words are
+long; only the rendered screenshot tells you that. A \`flex
+justify-between\` row with two long children may overflow even if both
+children have the right text classes. Trust the pixels.
 
 The frontend gate is as binding as the smoke-test gate. A green smoke
-test with a bare-bones UI is still a NO vote.
+test with a bare-bones UI — or a UI that overflows on mobile — is still
+a NO vote.
 `.trim();

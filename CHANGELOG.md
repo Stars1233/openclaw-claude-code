@@ -158,6 +158,14 @@ engine or skill drift fails this test loudly. Manual smoke runner at
   frontend gate that every agent must execute before voting YES.
   "Functional minimum" is now a NO vote. Section 5 voting marker and
   agent-C persona updated to enforce.
+- **§7g requires real Chrome-headless screenshots, not code review.**
+  First live exercise of §7 produced a polished desktop but a
+  mobile-overflow UI because agents inspected meta tags / @media
+  queries instead of opening the rendered PNG. §7g now spells out the
+  exact `chrome --headless=new --window-size=1440,900` and `375,812`
+  invocations and requires agents to open the resulting PNGs and verify
+  by eye — explicitly calling out that source-code review is
+  insufficient evidence.
 
 ### Added — session-manager cross-process visibility
 
