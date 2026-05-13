@@ -95,7 +95,14 @@ export async function runCouncilSynth(args: CouncilSynthArgs): Promise<CouncilSy
 
   const rounds = session.responses.length > 0 ? Math.max(...session.responses.map((r) => r.round)) : 0;
 
-  if (session.status !== 'consensus') {
+  // Council's lifecycle on success is: round-with-all-YES → status='awaiting_user'
+  // (waiting for the human-review tools council_review/council_accept). For
+  // ultraapp the human-review step is unwanted — once consensus is reached the
+  // codebase is shipped automatically. So both 'consensus' and 'awaiting_user'
+  // (and 'accepted', for symmetry if a caller has already accepted) count as
+  // success.
+  const successStatuses = new Set(['consensus', 'awaiting_user', 'accepted']);
+  if (!successStatuses.has(session.status)) {
     if (session.status === 'max_rounds') {
       return {
         ok: false,

@@ -25,7 +25,13 @@ You must drive enough questions to cover ALL of these areas before declaring the
 - `meta` — name (slug), title (human-readable), description (1–2 sentences)
 - `inputs` — at least one. For each: name, type (file/files/text/enum/number), accept (mime/ext for files), required, description, ideally one or more example refs (uploaded or pasted-path)
 - `outputs` — at least one. For each: name, type (file/text/json/image-gallery/video), description
-- `pipeline.steps` — full DAG. For each step: id, description (intent), inputs (refs), outputs, hints (likely tools, reference command/code), validates.outputType
+- `pipeline.steps` — full DAG. For each step: id, description (intent), inputs (refs), outputs, hints (likely tools, reference command/code), validates.outputType.
+  - **Ref format for `step.inputs[]` is strict.** Each ref must be either
+    `inputs.<input-name>` (where `<input-name>` is a declared `inputs[].name`)
+    or `<previous-step-id>.<output-name>` (where `<previous-step-id>` is an
+    earlier `pipeline.steps[].id`). Bare names like `"text"` or `"video"` are
+    rejected at startBuild — always include the `inputs.` prefix or the
+    `<step-id>.` prefix.
 - `runtime` — needsLLM (boolean), llmProviders if true, binaryDeps (ffmpeg, python3, etc.), estimatedRuntimeSec, estimatedFileSizeMB
 - `ui` — layout (single-form/wizard/split-view), showProgress, optional accentColor
 

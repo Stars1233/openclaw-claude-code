@@ -102,18 +102,22 @@ export class UltraappRouter {
       return;
     }
     const slug = m[1];
-    const tail = m[2] ?? '/';
     const backend = this.map.get(slug);
     if (backend === undefined) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end(`forge slug not registered: ${slug}`);
       return;
     }
+    // Forward the FULL URL — including the /forge/<slug> prefix. Apps
+    // following the conventions mount at BASE_PATH=/forge/<slug>/ (e.g.
+    // Hono's `root.basePath('/forge/<slug>')` model), so the framework
+    // itself owns prefix-stripping. Stripping here would double-strip and
+    // 404 every request.
     const proxy = http.request(
       {
         host: '127.0.0.1',
         port: backend,
-        path: tail,
+        path: url,
         method: req.method,
         headers: { ...req.headers, 'x-forwarded-prefix': `/forge/${slug}` },
       },

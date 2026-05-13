@@ -38,3 +38,4 @@ docs/
 # Internal design docs and work-in-progress notes — local only.
 # Earlier history contained tasks/ files; those are scrubbed via filter-repo.
 tasks/
+demo/

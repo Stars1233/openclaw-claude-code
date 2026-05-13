@@ -44,9 +44,9 @@ framework-required static asset routes):
                               Returns 404 until state === 'done'.
   GET /health               — plain "200 OK" for the deploy health check.
 
-Persistence layout under the container's /data volume:
+Persistence layout under the data dir:
 
-  /data/
+  $DATA_DIR/
     jobs/
       <jobId>/
         inputs/<name>     — uploaded files
@@ -54,8 +54,14 @@ Persistence layout under the container's /data volume:
         state.json        — { progress, currentStep, state, error }
         log.txt           — step-by-step log
 
+**Data path MUST be controlled by an env var, not hard-coded.** Use
+\`process.env.DATA_DIR ?? '/data'\` (the '/data' default is for Docker
+mode where it's a mounted volume; in host mode the orchestrator passes a
+per-run writable path via DATA_DIR). Never hard-code '/data' in source —
+it'll fail with EACCES on host runtime since '/data' isn't writable.
+
 NO database. NO SQLite. File-based queue only. Job retention: 7 days, then
-GC by a background sweeper that runs once per hour inside the container.
+GC by a background sweeper that runs once per hour.
 
 ## 3. BYOK (only if AppSpec.runtime.needsLLM is true)
 
@@ -86,7 +92,7 @@ internally. ENTRYPOINT runs the production server. Build args:
 
 Smoke test: package.json must expose "scripts.smoke" that drives ONE complete
 job using AppSpec.inputs[].examples[0].ref files copied into the image at
-build time under /data/_smoke/. The smoke test asserts pipeline completes and
+build time under $DATA_DIR/_smoke/. The smoke test asserts pipeline completes and
 output matches AppSpec.outputs[].type. fix-on-failure runs "npm run smoke" and
 gates build-success on its passing.
 

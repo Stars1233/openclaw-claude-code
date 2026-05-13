@@ -62,12 +62,15 @@ describe('UltraappRouter', () => {
     fs.rmSync(mapDir, { recursive: true, force: true });
   });
 
-  it('proxies /forge/<slug>/* to the registered backend', async () => {
+  it('proxies /forge/<slug>/* to the registered backend with the full URL preserved', async () => {
+    // The router does NOT strip the /forge/<slug> prefix — apps mount at
+    // BASE_PATH internally (Hono basePath / Next.js basePath) and expect
+    // the full URL.
     router.register('foo', backendPort);
     const r = await get(routerPort, '/forge/foo/bar');
     expect(r.status).toBe(200);
     expect(r.body).toContain('backend-A');
-    expect(r.body).toContain('path=/bar');
+    expect(r.body).toContain('path=/forge/foo/bar');
   });
 
   it('returns 404 for /forge/<slug>/ when slug is unregistered', async () => {

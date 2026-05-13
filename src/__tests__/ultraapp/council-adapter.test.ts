@@ -102,6 +102,48 @@ describe('runCouncilSynth', () => {
     }
   });
 
+  it("treats council 'awaiting_user' status as success (consensus reached, ready for human review)", async () => {
+    // Council's lifecycle on success is: consensus → awaiting_user. Ultraapp
+    // doesn't want the human-review step; awaiting_user is the success state.
+    const fakeCouncilRun = vi.fn().mockResolvedValue({
+      id: 'c1',
+      task: 't',
+      status: 'awaiting_user',
+      config: { agents: [], maxRounds: 8, projectDir: '' },
+      responses: [
+        {
+          agent: 'a',
+          round: 4,
+          content: '...',
+          consensus: true,
+          sessionKey: 'k1',
+          timestamp: '2026-05-12T00:00:00Z',
+        },
+      ],
+      startTime: '2026-05-12T00:00:00Z',
+    } satisfies CouncilSession);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ua-cs-'));
+    try {
+      const spec = makeEmptySpec('ua-1');
+      spec.meta.name = 'demo';
+      const r = await runCouncilSynth({
+        spec,
+        runId: 'ua-1',
+        runDir: tmp,
+        sessionManager: {
+          startSession: vi.fn(),
+          sendMessage: vi.fn(),
+          stopSession: vi.fn(),
+        } as never,
+        councilRun: fakeCouncilRun,
+      });
+      expect(r.ok).toBe(true);
+      expect(r.worktreePath).toMatch(/codebase$/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it('returns failed when council reaches max rounds without consensus', async () => {
     const fakeCouncilRun = vi.fn().mockResolvedValue({
       id: 'c1',

@@ -318,7 +318,15 @@ export class UltraappManager {
               ...a,
               // Host runner needs the cwd; smuggle it through env (deploy.ts
               // passes `image: tag` so we can't use that field).
-              env: { ...a.env, HOST_CWD: args.worktreePath },
+              // Also set DATA_DIR to a writable per-run path — the conventions
+              // tell generated codebases to use process.env.DATA_DIR ?? '/data'.
+              // In Docker mode that defaults to '/data' (a mounted volume).
+              // In host mode we point it at the run's host data dir.
+              env: {
+                ...a.env,
+                HOST_CWD: args.worktreePath,
+                DATA_DIR: path.join(this.opts.store.runDirAbsolute(args.runId), 'data'),
+              },
             }),
       router,
       fetchFn: fetch,
