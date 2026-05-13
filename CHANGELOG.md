@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.4] - 2026-05-13
+
+### Fixed — Auth token now read per-request from disk
+
+4.0.3 read the token file once at server start. If another `clawo serve`
+instance (a nohup test, a second launchd service) briefly held the bind
+and wrote a different token before losing, the live server's in-memory
+token would diverge from the file. sasha-doctor's reverse proxy reads the
+file fresh on every request, so the proxy-injected `Bearer` no longer
+matched the server's check — manifesting as 401 with the
+"Send Authorization: Bearer <token>" hint despite the file being right.
+Each request now re-reads `~/.openclaw/server-token` (a 64-byte read from
+kernel page cache, microsecond cost on this endpoint) so the in-memory
+token and file value can never permanently diverge. `OPENCLAW_SERVER_TOKEN`
+env override and the `disabled` opt-out are unchanged.
+
+### Fixed — Reopening a terminated autoloop run no longer hangs on "Waiting…"
+
+`autoloopStatus(runId)` previously returned `undefined` for any run that
+wasn't in this process's in-memory map, so the dashboard's `/autoloop/<id>/state`
+fetch 404'd on every terminated run and the UI stayed on its "Waiting…"
+placeholder forever. `autoloopStatus` now falls back to
+`listAutoloopsFromRegistry` and reconstructs a `terminated`-state shape
+from the on-disk ledger when there's no live runner. `/push_log` was
+refactored to go through `autoloopStatus` so it benefits from the same
+fallback. `/events` returns a single-shot SSE (snapshot + `terminated`
+event + close) for disk-only runs so the dashboard's existing handlers
+cleanly render history without crashing on a 404 EventSource.
+
+### Added — Chat history persistence + `/autoloop/<id>/chat_history` endpoint
+
+Planner user-messages and Planner replies are now appended to
+`<ledger>/chat.jsonl` on every turn. The dashboard fetches this file on
+open and replays the conversation into the planner pane, so refreshing
+the page / re-opening a terminated run / coming back from a `clawo serve`
+restart no longer wipes the visible history. Returns `[]` for runs that
+predate this change.
+
+### Added — `POST /autoloop/<id>/resume` + Resume button
+
+Terminated runs can now be brought back in-process. The endpoint:
+
+1. Looks up the run in `~/.claw-orchestrator/autoloop-registry.jsonl`.
+2. Re-creates the runner + dispatcher with the same `run_id` / workspace.
+3. `ensurePlanner` picks up the Planner's `claudeSessionId` from
+   `persistedSessions` (now kept on disk because `dispatcher.shutdown`
+   passes `keepPersisted: true` to `stopSession`) and Claude resumes the
+   original conversation. Runs that predate this change have no persisted
+   session — they get a fresh Planner with the same system prompt, while
+   the dashboard replays `chat.jsonl` (when present) visually.
+
+The dashboard surfaces a green **Resume run** button in the top bar
+whenever a run's status is `terminated`. Click → POST `/resume` →
+reconnect SSE.
+
+### Changed — `SessionManager.stopSession(name, { keepPersisted? })`
+
+`stopSession` now accepts an opts bag. `keepPersisted: true` keeps the
+`persistedSessions` entry on disk so a later resume can re-attach the
+Claude session. Defaults to the old behaviour (entry deleted) so callers
+that haven't opted in are unaffected. Autoloop `dispatcher.shutdown(...)`
+passes `keepPersisted: true` automatically; `autoloopDelete` passes
+`purge: true` to ensure a real delete still scrubs everything.
+
 ## [4.0.3] - 2026-05-13
 
 ### Fixed — Dashboard auth token survives `clawo serve` restarts

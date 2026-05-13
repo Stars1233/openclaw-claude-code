@@ -1491,6 +1491,57 @@
             state.autoloop.pushLog = logJ.entries || [];
             paintPushLog();
           }
+          // Replay chat history from <ledger>/chat.jsonl so a refresh /
+          // reopening a terminated run shows the prior conversation. New
+          // entries that arrive via SSE (planner_reply) get appended on top.
+          const histR = await fetch(`/autoloop/${encodeURIComponent(id)}/chat_history`);
+          if (histR.ok) {
+            const histJ = await histR.json();
+            if (histJ.ok && Array.isArray(histJ.entries)) {
+              state.autoloop.plannerLog = histJ.entries
+                .filter((e) => e && typeof e.text === 'string')
+                .map((e) => ({ who: e.who || 'planner', text: e.text, ts: e.ts || '' }));
+              paintPlanner();
+            }
+          }
+          // For terminated runs, surface a Resume affordance under the
+          // top bar. The button kicks off /autoloop/<id>/resume and then
+          // re-runs openAutoloop so SSE reconnects with the live state.
+          if (state.autoloop.state && state.autoloop.state.status === 'terminated') {
+            const bar = document.querySelector('.topbar');
+            if (bar && !document.getElementById('auto-resume')) {
+              const btn = document.createElement('button');
+              btn.id = 'auto-resume';
+              btn.textContent = 'Resume run';
+              btn.style.cssText =
+                'padding:6px 12px;border:1px solid var(--border);background:var(--accent);color:#fff;border-radius:6px;cursor:pointer;font:inherit;font-weight:600;margin-left:auto';
+              btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                btn.textContent = 'Resuming…';
+                try {
+                  const r2 = await fetch(`/autoloop/${encodeURIComponent(id)}/resume`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: '{}',
+                  });
+                  if (!r2.ok) {
+                    const j2 = await r2.json().catch(() => ({}));
+                    alert(`Resume failed: ${(j2 && j2.error) || `HTTP ${r2.status}`}`);
+                    btn.disabled = false;
+                    btn.textContent = 'Resume run';
+                    return;
+                  }
+                  closeStreams();
+                  openAutoloop(id);
+                } catch (err) {
+                  alert(`Resume failed: ${(err && err.message) || err}`);
+                  btn.disabled = false;
+                  btn.textContent = 'Resume run';
+                }
+              });
+              bar.appendChild(btn);
+            }
+          }
         } catch (err) {
           /* ignore */
         }

@@ -105,6 +105,25 @@ because users never see or paste the token.
 
 Token-file write is deferred to the `listen()`-success callback so a second
 process that loses the EADDRINUSE race does NOT clobber the winner's token.
+The token is also re-read from disk on every request so that if a different
+clawo instance (test runner, nohup launch, etc.) writes a new value mid-life,
+the proxy and the server stay in agreement on the next request — no restart
+required.
+
+## Resuming a terminated autoloop run
+
+Opening a run whose `status` is `terminated` (because its process has
+exited, or because you're viewing it cross-process) no longer hangs on
+"Waiting…". The dashboard fetches `/autoloop/<id>/chat_history`, replays
+the conversation into the Planner pane, and surfaces a green **Resume
+run** button in the topbar. Clicking it POSTs `/autoloop/<id>/resume`;
+the orchestrator re-attaches the Planner (reusing the persisted Claude
+session ID when available, so Claude's context picks up where it left
+off) and the dashboard reconnects to `/events` for live updates.
+
+Runs that pre-date this feature have no `chat.jsonl` and no persisted
+session — they still resume cleanly, but with a blank Planner pane and a
+fresh Claude context. New runs going forward retain both.
 
 ## Cross-process visibility
 

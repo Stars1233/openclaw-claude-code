@@ -200,17 +200,30 @@ export class EmbeddedServer {
     const url = new URL(req.url || '/', `http://localhost:${this.port}`);
     const path = url.pathname;
 
-    // Auth: accept Bearer header, `clawo_auth` cookie, or `?token=` query
-    // (auth-skip allow-list: /health for monitoring).
+    // Auth: accept Bearer header, `clawo_auth` cookie, or `?token=` query.
+    // We re-read ~/.openclaw/server-token PER REQUEST (64-byte read, kernel
+    // page cache, microseconds). Necessary because another clawo instance
+    // (nohup test, second launchd, npm test process) can overwrite the file
+    // mid-life; sasha-doctor's reverse proxy reads disk fresh on every
+    // request, so without us doing the same we sit with a stale in-memory
+    // token and 401 everything the proxy injects.
     if (this.authToken && path !== '/health') {
+      const envExplicit =
+        typeof process.env.OPENCLAW_SERVER_TOKEN === 'string' &&
+        process.env.OPENCLAW_SERVER_TOKEN !== '' &&
+        process.env.OPENCLAW_SERVER_TOKEN !== 'disabled';
+      const liveToken = envExplicit
+        ? (process.env.OPENCLAW_SERVER_TOKEN as string)
+        : (this._readPersistedToken() ?? this.authToken);
+
       const authHeader = req.headers.authorization || '';
       const queryToken = url.searchParams.get('token');
       const cookieHeader = req.headers.cookie || '';
       const cookieToken = /(?:^|;\s*)clawo_auth=([^;]+)/.exec(cookieHeader)?.[1];
 
-      const bearerOk = authHeader === `Bearer ${this.authToken}`;
-      const queryOk = queryToken === this.authToken;
-      const cookieOk = cookieToken === this.authToken;
+      const bearerOk = authHeader === `Bearer ${liveToken}`;
+      const queryOk = queryToken === liveToken;
+      const cookieOk = cookieToken === liveToken;
 
       if (!bearerOk && !queryOk && !cookieOk) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -228,7 +241,7 @@ export class EmbeddedServer {
       // requests (including EventSource) authenticate without exposing the token
       // in URLs / referrers / access logs.
       if (queryOk && !cookieOk) {
-        res.setHeader('Set-Cookie', `clawo_auth=${this.authToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);
+        res.setHeader('Set-Cookie', `clawo_auth=${liveToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);
       }
     }
 
@@ -719,18 +732,46 @@ export class EmbeddedServer {
       const v2PushLogMatch = path.match(/^\/autoloop\/([^/]+)\/push_log$/);
       if (v2PushLogMatch) {
         const id = v2PushLogMatch[1];
-        const ctx = this.manager.getAutoloop(id);
-        if (!ctx) {
+        // Use autoloopStatus so terminated/disk-only runs are served from
+        // the registry-reconstructed ledger_dir, not just live runs.
+        const status = this.manager.autoloopStatus(id);
+        if (!status) {
           json(404, { ok: false, error: 'run not found' });
           return;
         }
-        // push_log lives at <ledger>/push_log.jsonl — the dispatcher knows
-        // the ledger dir. We re-derive it here to avoid leaking dispatcher
-        // internals through the manager.
         const fsMod = await import('node:fs');
         const pathMod = await import('node:path');
-        const ledgerDir = pathMod.join(ctx.dispatcher.config.workspace, 'tasks', id);
-        const file = pathMod.join(ledgerDir, 'push_log.jsonl');
+        const file = pathMod.join(status.ledger_dir, 'push_log.jsonl');
+        const lines: unknown[] = [];
+        if (fsMod.existsSync(file)) {
+          for (const line of fsMod.readFileSync(file, 'utf-8').split('\n')) {
+            if (!line.trim()) continue;
+            try {
+              lines.push(JSON.parse(line));
+            } catch {
+              /* skip malformed line */
+            }
+          }
+        }
+        json(200, { ok: true, entries: lines });
+        return;
+      }
+
+      // GET /autoloop/<id>/chat_history → entries from <ledger>/chat.jsonl.
+      // Dashboard fetches this when opening a run so historic conversation
+      // is restored after page refresh / process restart. Returns [] when
+      // the file is missing (new runs).
+      const v2HistMatch = path.match(/^\/autoloop\/([^/]+)\/chat_history$/);
+      if (v2HistMatch) {
+        const id = v2HistMatch[1];
+        const status = this.manager.autoloopStatus(id);
+        if (!status) {
+          json(404, { ok: false, error: 'run not found' });
+          return;
+        }
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        const file = pathMod.join(status.ledger_dir, 'chat.jsonl');
         const lines: unknown[] = [];
         if (fsMod.existsSync(file)) {
           for (const line of fsMod.readFileSync(file, 'utf-8').split('\n')) {
@@ -751,7 +792,25 @@ export class EmbeddedServer {
         const id = v2EventsMatch[1];
         const ctx = this.manager.getAutoloop(id);
         if (!ctx) {
-          json(404, { ok: false, error: 'run not found' });
+          // Run not in this process's memory. If the registry knows about
+          // it, serve a single-shot SSE: snapshot of the reconstructed
+          // terminated state, then 'terminated' event, then close. Stops
+          // the dashboard from hanging on "Waiting…" for historical runs.
+          const histState = this.manager.autoloopStatus(id);
+          if (!histState) {
+            json(404, { ok: false, error: 'run not found' });
+            return;
+          }
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          });
+          res.write(`event: snapshot\ndata: ${JSON.stringify({ state: histState })}\n\n`);
+          res.write(
+            `event: terminated\ndata: ${JSON.stringify({ reason: histState.status_reason ?? 'historical' })}\n\n`,
+          );
+          res.end();
           return;
         }
         res.writeHead(200, {
@@ -863,6 +922,30 @@ export class EmbeddedServer {
           }
         } catch (err) {
           json(500, { ok: false, error: (err as Error).message });
+        }
+        return;
+      }
+
+      // ─── Autoloop — resume a terminated run ───────────────────
+      //
+      // POST /autoloop/<run_id>/resume
+      //
+      // Re-attaches a run that exists in the registry but isn't in this
+      // process's in-memory map (terminated, or live in a different process).
+      // SessionManager.autoloopResume re-creates dispatcher + runner; if the
+      // Planner's persistedSessions entry survived shutdown (it does for
+      // runs that ended via terminate, NOT for autoloopDelete), Claude will
+      // resume the original conversation. Otherwise a fresh Planner is
+      // spawned and the dashboard replays chat.jsonl visually.
+      const v2ResumeMatch = path.match(/^\/autoloop\/([^/]+)\/resume$/);
+      if (v2ResumeMatch) {
+        const id = v2ResumeMatch[1];
+        try {
+          const state = await this.manager.autoloopResume(id);
+          json(200, { ok: true, state });
+        } catch (err) {
+          const msg = (err as Error).message;
+          json(/not found/i.test(msg) ? 404 : 500, { ok: false, error: msg });
         }
         return;
       }

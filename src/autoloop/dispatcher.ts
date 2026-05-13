@@ -172,16 +172,19 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     await this.ensurePlanner();
   }
 
-  async shutdown(reason: string): Promise<void> {
+  async shutdown(reason: string, opts: { purge?: boolean } = {}): Promise<void> {
     this.appendDecisionLog({
       kind: 'terminate',
       actor: reason === 'phase_error_circuit' ? 'runner' : 'planner',
       payload: { reason },
     });
     // Best-effort cleanup. Stopping a non-existent session is a no-op.
+    // keepPersisted: true keeps the persistedSessions entry on disk so a
+    // later /autoloop/<id>/resume can re-attach the Planner's Claude
+    // conversation. Only autoloopDelete passes purge:true (real teardown).
     for (const name of [this.plannerName, this.coderName, this.reviewerName]) {
       try {
-        await this.config.manager.stopSession(name);
+        await this.config.manager.stopSession(name, { keepPersisted: !opts.purge });
       } catch (err) {
         this.logger.warn?.(`[autoloop] failed to stop ${name}: ${(err as Error).message}`);
       }
@@ -294,6 +297,21 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     }
   }
 
+  /**
+   * Append a Planner-pane chat entry to <ledger>/chat.jsonl. Used by the
+   * dashboard's GET /autoloop/<id>/chat_history endpoint so a browser
+   * refresh / cross-process / re-opening a terminated run can replay the
+   * conversation instead of starting visibly blank.
+   */
+  private appendChatEntry(entry: { who: 'user' | 'planner' | 'system'; text: string; ts: string }): void {
+    try {
+      fs.mkdirSync(this.ledgerDir, { recursive: true });
+      fs.appendFileSync(path.join(this.ledgerDir, 'chat.jsonl'), JSON.stringify(entry) + '\n');
+    } catch (err) {
+      this.logger.warn?.(`[autoloop] chat.jsonl append failed: ${(err as Error).message}`);
+    }
+  }
+
   // ─── Auto-compact ────────────────────────────────────────────────────────
   //
   // After each agent turn we check getStats().contextPercent. When it crosses
@@ -401,6 +419,9 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     let promptText: string;
     if (env.type === 'chat') {
       promptText = env.payload.text;
+      // Persist user message so the dashboard can replay history after
+      // refresh / cross-process / terminated-run reopen.
+      this.appendChatEntry({ who: 'user', text: env.payload.text, ts: env.ts });
     } else if (env.type === 'directive_ack') {
       promptText = `[system] coder directive_ack iter=${env.iter}: ${JSON.stringify(env.payload)}`;
     } else {
@@ -501,7 +522,10 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
     }
 
     // Emit cleaned reply (without raw JSON blocks) for the chat tool to surface.
-    if (parsed.cleaned_reply) this.emit('planner_reply', parsed.cleaned_reply);
+    if (parsed.cleaned_reply) {
+      this.emit('planner_reply', parsed.cleaned_reply);
+      this.appendChatEntry({ who: 'planner', text: parsed.cleaned_reply, ts: new Date().toISOString() });
+    }
     // Auto-compact after each Planner turn if context is filling up.
     await this.maybeCompact('planner', this.plannerName);
     return handlerResult.emitted_messages;

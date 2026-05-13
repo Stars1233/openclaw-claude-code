@@ -7,6 +7,32 @@ import { SessionManager } from '../session-manager.js';
 import { EmbeddedServer } from '../embedded-server.js';
 import type { CouncilSession } from '../types.js';
 
+// Tests construct real EmbeddedServer instances, which write to the shared
+// host-level path ~/.openclaw/server-token. Without protection, running
+// `npm test` while logged into the dashboard rotates the user's token and
+// kicks them out. Snapshot before, restore after; the SessionManager
+// pidfile tests already do the same for ~/.openclaw/session-pids.json.
+const REAL_TOKEN_PATH = path.join(os.homedir(), '.openclaw', 'server-token');
+let realTokenBackup: string | null = null;
+
+beforeAll(() => {
+  try {
+    realTokenBackup = fs.readFileSync(REAL_TOKEN_PATH, 'utf-8');
+  } catch {
+    realTokenBackup = null;
+  }
+});
+afterAll(() => {
+  if (realTokenBackup !== null) {
+    try {
+      fs.mkdirSync(path.dirname(REAL_TOKEN_PATH), { recursive: true });
+      fs.writeFileSync(REAL_TOKEN_PATH, realTokenBackup, { mode: 0o600 });
+    } catch {
+      /* best-effort restore */
+    }
+  }
+});
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -336,6 +362,110 @@ describe('POST /autoloop/:id/delete', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: '{}',
+    });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('POST /autoloop/:id/resume + GET /autoloop/:id/chat_history', () => {
+  let manager: SessionManager;
+  let server: EmbeddedServer;
+  let port: number;
+  let token: string;
+
+  beforeAll(async () => {
+    manager = new SessionManager({});
+    const ephemeral = await freePort();
+    server = new EmbeddedServer(manager, ephemeral);
+    port = await server.start();
+    token = fs.readFileSync(path.join(os.homedir(), '.openclaw', 'server-token'), 'utf-8').trim();
+  });
+  afterAll(async () => {
+    await server.stop();
+    await manager.shutdown();
+  });
+
+  it('resume returns the new in-memory state', async () => {
+    vi.spyOn(manager, 'autoloopResume').mockResolvedValue({
+      run_id: 'run-rsm',
+      status: 'planning',
+      iter: 0,
+      subagents_spawned: false,
+      started_at: '2026-05-13T10:00:00.000Z',
+      workspace: '/tmp',
+      ledger_dir: '/tmp/tasks/run-rsm',
+      push_log_count: 0,
+      status_reason: null,
+      consecutive_phase_errors: 0,
+      recent_phase_errors: [],
+      metric_history: [],
+      last_activity_at: 0,
+    });
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/run-rsm/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { ok: boolean; state: { run_id: string; status: string } };
+    expect(j.ok).toBe(true);
+    expect(j.state.run_id).toBe('run-rsm');
+    expect(j.state.status).toBe('planning');
+  });
+
+  it('resume returns 404 when registry has no record', async () => {
+    vi.spyOn(manager, 'autoloopResume').mockRejectedValue(new Error("Autoloop run 'nope' not found in registry"));
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/nope/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    expect(r.status).toBe(404);
+  });
+
+  it('chat_history reads <ledger>/chat.jsonl and returns entries', async () => {
+    // Stage a fake ledger so /chat_history can read it.
+    const tmpLedger = fs.mkdtempSync(path.join(os.tmpdir(), 'autoloop-hist-'));
+    fs.writeFileSync(
+      path.join(tmpLedger, 'chat.jsonl'),
+      [
+        JSON.stringify({ who: 'user', text: 'hi', ts: '2026-05-13T01:00:00Z' }),
+        JSON.stringify({ who: 'planner', text: 'hello back', ts: '2026-05-13T01:00:05Z' }),
+      ].join('\n') + '\n',
+    );
+    vi.spyOn(manager, 'autoloopStatus').mockReturnValue({
+      run_id: 'hist-run',
+      status: 'terminated',
+      iter: 0,
+      subagents_spawned: false,
+      started_at: '2026-05-13T01:00:00Z',
+      workspace: '/tmp',
+      ledger_dir: tmpLedger,
+      push_log_count: 0,
+      status_reason: 'historical',
+      consecutive_phase_errors: 0,
+      recent_phase_errors: [],
+      metric_history: [],
+      last_activity_at: 0,
+    });
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/hist-run/chat_history`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { ok: boolean; entries: Array<{ who: string; text: string }> };
+    expect(j.ok).toBe(true);
+    expect(j.entries).toHaveLength(2);
+    expect(j.entries[0].who).toBe('user');
+    expect(j.entries[1].who).toBe('planner');
+    fs.rmSync(tmpLedger, { recursive: true, force: true });
+  });
+
+  it('chat_history 404s when autoloopStatus has no record', async () => {
+    vi.spyOn(manager, 'autoloopStatus').mockReturnValue(undefined);
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/missing/chat_history`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
     });
     expect(r.status).toBe(404);
   });

@@ -212,11 +212,13 @@ Every JSON artifact in the ledger carries a `schema_version` field (currently
 |---|---|
 | `GET /autoloop/list` | `{ ok, runs: AutoloopState[] }` |
 | `POST /autoloop/new` | `{ ok, run_id, planner_session }` — body `{ workspace, run_id?, planner_model?, send_timeout_ms? }` |
-| `GET /autoloop/<id>/state` | `{ ok, state: AutoloopState }` |
-| `GET /autoloop/<id>/push_log` | `{ ok, entries: PushLogEntry[] }` |
-| `GET /autoloop/<id>/events` | SSE: `snapshot` / `message` / `state` / `push` / `iter_done` / `planner_reply` / `planner_error` / `coder_reply` / `reviewer_reply` / `terminated` |
+| `GET /autoloop/<id>/state` | `{ ok, state: AutoloopState }` — also returns a `terminated`-state stub reconstructed from the registry for runs that aren't in this process's memory, so the dashboard can open historical runs without 404'ing. |
+| `GET /autoloop/<id>/push_log` | `{ ok, entries: PushLogEntry[] }` — served from the ledger via `autoloopStatus`, so historical runs work the same as live ones. |
+| `GET /autoloop/<id>/chat_history` | `{ ok, entries: ChatEntry[] }` — replays `<ledger>/chat.jsonl`. The dashboard fetches this when opening a run so the Planner-pane conversation survives a page refresh / cross-process / re-opening a terminated run. Returns `[]` when the file doesn't exist (e.g. runs that predate the chat-history feature). |
+| `GET /autoloop/<id>/events` | SSE: `snapshot` / `message` / `state` / `push` / `iter_done` / `planner_reply` / `planner_error` / `coder_reply` / `reviewer_reply` / `terminated`. For runs that are NOT in this process's memory (terminated, or live in another process), the endpoint emits a single-shot `snapshot` + `terminated` then closes — the dashboard's existing handlers render history without hanging. |
 | `POST /autoloop/<id>/chat` | **202** `{ ok, queued: true }` — body `{ text }`. Fire-and-forget: the Planner's reply streams back via the `/events` SSE channel as a `planner_reply` event (or `planner_error` on failure); the HTTP response intentionally does NOT wait for it, because first-contact replies routinely exceed reverse-proxy idle limits (e.g. Cloudflare Tunnel cuts at ~100s → 524). 400 on empty text, 404 when the run is not in this process's memory. The MCP `autoloop_chat` tool path keeps the synchronous await-and-return-reply semantics (it runs in-process). |
-| `POST /autoloop/<id>/delete` | `{ ok }` — stops the runner if still alive, scrubs the row from `~/.claw-orchestrator/autoloop-registry.jsonl`. The ledger directory under `<workspace>/tasks/<run_id>/` is kept on disk. 404 if the run was not present in either memory or the registry. |
+| `POST /autoloop/<id>/resume` | `{ ok, state }` — bring a terminated run back into this process. Reads the registry entry, re-creates dispatcher + runner; `ensurePlanner` picks up the persisted `claudeSessionId` (kept on disk because autoloop terminate now passes `keepPersisted: true`) so Claude resumes the original conversation. Runs that pre-date this change get a fresh Planner; the dashboard replays `chat.jsonl` visually anyway. 404 when the registry has no record. |
+| `POST /autoloop/<id>/delete` | `{ ok }` — stops the runner if still alive, scrubs the row from `~/.claw-orchestrator/autoloop-registry.jsonl`, and purges `persistedSessions` so the run cannot be `/resume`'d back. The ledger directory under `<workspace>/tasks/<run_id>/` is kept on disk. 404 if the run was not present in either memory or the registry. |
 
 The 3-pane UI consumes these endpoints:
 - **Left**: Planner chat (subscribes to `planner_reply`)

@@ -617,16 +617,21 @@ export class SessionManager {
     }
   }
 
-  async stopSession(name: string): Promise<void> {
+  async stopSession(name: string, opts: { keepPersisted?: boolean } = {}): Promise<void> {
     const managed = this._getSession(name);
     managed.session.stop();
     this.sessions.delete(name);
     // Remove PID tracking
     this._activePids.delete(name);
     this._savePids();
-    // Explicit stop = user intent to end session — remove from disk too
-    this.persistedSessions.delete(name);
-    savePersistedSessions(this.persistedSessions, this.logger);
+    if (!opts.keepPersisted) {
+      // Explicit stop = user intent to end session — remove from disk too.
+      // Callers that want the session resumable (autoloop terminate that
+      // should still allow /autoloop/<id>/resume to reattach the Planner's
+      // Claude conversation) pass keepPersisted: true.
+      this.persistedSessions.delete(name);
+      savePersistedSessions(this.persistedSessions, this.logger);
+    }
   }
 
   listSessions(): SessionInfo[] {
@@ -2244,7 +2249,28 @@ export class SessionManager {
   }
 
   autoloopStatus(runId: string): AutoloopState | undefined {
-    return this.autoloops.get(runId)?.runner.state;
+    const live = this.autoloops.get(runId)?.runner.state;
+    if (live) return live;
+    // Fallback: rebuild a terminated-state shape from the cross-process
+    // registry so the dashboard can open historical runs (read chat
+    // history, view plan.md, push_log) instead of hanging on a 404 forever.
+    const entry = listAutoloopsFromRegistry().find((e) => e.run_id === runId);
+    if (!entry) return undefined;
+    return {
+      run_id: entry.run_id,
+      status: 'terminated',
+      iter: 0,
+      subagents_spawned: false,
+      started_at: entry.started_at,
+      workspace: entry.workspace,
+      ledger_dir: entry.ledger_dir,
+      push_log_count: 0,
+      status_reason: 'reconstructed from registry — not in current process memory',
+      consecutive_phase_errors: 0,
+      recent_phase_errors: [],
+      metric_history: [],
+      last_activity_at: 0,
+    };
   }
 
   autoloopList(): AutoloopState[] {
@@ -2299,6 +2325,49 @@ export class SessionManager {
   }
 
   /**
+   * Re-attach a terminated run that lives in the registry but not in this
+   * process's in-memory map. Re-creates dispatcher + runner with the same
+   * run_id / workspace; ensurePlanner will pick up the Planner's claudeSessionId
+   * from persistedSessions (kept on disk because dispatcher.shutdown was
+   * called with keepPersisted) and Claude will resume the prior conversation.
+   *
+   * Returns the new in-memory state. Throws if the registry has no record
+   * of this run.
+   *
+   * Note: if persistedSessions for the planner is empty (older run that
+   * pre-dates this feature, OR the run was explicitly deleted), Claude will
+   * start a fresh session with the same system prompt — chat memory from
+   * Claude's own context is lost, but the chat.jsonl history we now persist
+   * is still served via /autoloop/<id>/chat_history so the dashboard can
+   * replay the conversation visually.
+   */
+  async autoloopResume(runId: string): Promise<AutoloopState> {
+    const existing = this.autoloops.get(runId);
+    if (existing) return existing.runner.state;
+
+    const entry = listAutoloopsFromRegistry().find((e) => e.run_id === runId);
+    if (!entry) throw new Error(`Autoloop run '${runId}' not found in registry`);
+
+    // Scrub the prior registry row before autoloopStart appends a new one.
+    // Without this, every resume leaves a duplicate JSONL line; listAutoloops
+    // dedups on read (newest wins), but the file grows monotonically and the
+    // postmortem ledger becomes hard to scan. Best-effort — we don't block
+    // the resume on a registry write failure.
+    try {
+      removeAutoloopFromRegistry(DEFAULT_AUTOLOOP_REGISTRY, runId);
+    } catch (err) {
+      this.logger.warn?.(`[autoloop/${runId}] registry scrub during resume failed: ${(err as Error).message}`);
+    }
+
+    return (
+      await this.autoloopStart({
+        runId: entry.run_id,
+        workspace: entry.workspace,
+      })
+    ).state;
+  }
+
+  /**
    * Delete a run from the system: stop the runner if it's still alive in this
    * process, then scrub the row from the cross-process registry so it stops
    * appearing in `autoloop_list` / the dashboard. The ledger directory on disk
@@ -2311,13 +2380,37 @@ export class SessionManager {
     const ctx = this.autoloops.get(runId);
     let touched = false;
     if (ctx) {
+      // Delete = "really gone". Call dispatcher.shutdown directly with
+      // purge:true so persistedSessions entries are removed too —
+      // otherwise the Claude Planner conversation lingers on disk and the
+      // run could be /resume'd back to life. Bypassing runner.send is
+      // intentional: the runner's terminate path is meant to be the
+      // soft-pause we use for autoloopStop / autoloopResume, which keeps
+      // persisted state intact.
       try {
-        await ctx.runner.send(AutoloopMsg.terminate(ctx.runner.state.iter, { reason: 'user-delete' }));
+        await ctx.dispatcher.shutdown('user-delete', { purge: true });
       } catch (err) {
-        this.logger.warn?.(`[autoloop/${runId}] terminate during delete failed: ${(err as Error).message}`);
+        this.logger.warn?.(`[autoloop/${runId}] dispatcher shutdown during delete failed: ${(err as Error).message}`);
+      }
+      try {
+        ctx.runner.stop();
+      } catch {
+        /* runner may already be stopped */
       }
       this.autoloops.delete(runId);
       touched = true;
+    } else {
+      // Disk-only run: ensure any leftover persistedSessions entry for the
+      // Planner is cleaned up so it isn't resumed by accident later.
+      try {
+        await this.stopSession(`autoloop-${runId}-planner`);
+      } catch {
+        /* session not in memory — fine */
+      }
+      this.persistedSessions.delete(`autoloop-${runId}-planner`);
+      this.persistedSessions.delete(`autoloop-${runId}-coder`);
+      this.persistedSessions.delete(`autoloop-${runId}-reviewer`);
+      savePersistedSessions(this.persistedSessions, this.logger);
     }
     try {
       const removed = removeAutoloopFromRegistry(DEFAULT_AUTOLOOP_REGISTRY, runId);
