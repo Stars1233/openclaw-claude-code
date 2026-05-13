@@ -23,6 +23,19 @@ describe('composeCouncilPrompt', () => {
     expect(prompt).toContain('GET /status/:jobId');
     expect(prompt).toContain('CONSENSUS: YES');
   });
+  it('embeds the §7 frontend quality gate so council enforces visual polish', () => {
+    // Regression guard: a missing frontend section is what shipped the
+    // "looks like a dev demo" v0.1 output. Every regenerated spec must
+    // see the gate or the council defaults to "functional minimum".
+    const spec = makeEmptySpec('ua-1');
+    const prompt = composeCouncilPrompt(spec);
+    expect(prompt).toContain('Frontend quality');
+    expect(prompt).toContain('§7g');
+    expect(prompt).toContain('375px');
+    expect(prompt).toContain('Empty');
+    expect(prompt).toContain('Loading');
+    expect(prompt).toContain('would a startup ship this');
+  });
   it('quotes the AppSpec.meta.name as the slug to use', () => {
     const spec = makeEmptySpec('ua-1');
     spec.meta.name = 'vlog-cutter';

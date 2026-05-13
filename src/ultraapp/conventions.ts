@@ -110,6 +110,7 @@ This is a 3-agent council collaborating in separate git worktrees. Each round:
   message.
 - At the end of your turn, vote with the literal marker:
   [CONSENSUS: YES]   — if codebase fully implements spec + all conventions met
+                       AND every agent has executed the §7g frontend gate
   [CONSENSUS: NO]    — otherwise; explain what's still wrong/missing
 
 Collaboration ends only when ALL 3 agents vote YES, or after maxRounds=8.
@@ -120,4 +121,96 @@ You may pick any modern TypeScript or JavaScript framework that satisfies the
 above. Recommended choices: Next.js 15+, Vite + Hono, SvelteKit. AVOID:
 Python (this is a Node ecosystem app), pure static-site generators (need
 server endpoints).
+
+## 7. Frontend quality (MANDATORY — not optional)
+
+This is a one-click app generator. The output must look like a real product
+that a startup could put in front of users tomorrow. "Functional minimum"
+is a NO vote. Bare HTML with browser-default styling is a NO vote.
+Hand-rolled CSS without a system is a NO vote. The bar is professional
+visual polish, not "it works".
+
+### 7a. Styling system (pick one — none of these are optional)
+- Tailwind CSS v4+ with a configured theme (preferred), OR
+- A modern component library that brings its own styling (shadcn/ui +
+  Tailwind, daisyUI, Mantine, Chakra UI v3+), OR
+- CSS Modules + a design-token file with explicit color/spacing/typography
+  scales — NO inline \`style=\` attributes, NO ad-hoc per-component CSS
+  files.
+
+Icons: lucide-react / @heroicons/react / phosphor-react. NO emoji as UI.
+NO unicode glyphs (✓ ✗ →) standing in for icons.
+
+### 7b. Layout & typography
+- Centered max-width container (≤ 1280px on desktop). NO full-bleed walls
+  of text.
+- Type hierarchy: h1 / h2 / body MUST be visually distinct (size + weight).
+  Body line-height ≥ 1.5. Pick a deliberate font stack (Inter, system-ui,
+  or a Google Font); browser default is a NO vote.
+- Generous whitespace. ≥ 16px padding around interactive elements.
+  Sections separated by ≥ 32px vertical rhythm.
+- Mobile-responsive: layout MUST work at 375px viewport width with no
+  horizontal scrollbar. Test in browser devtools (or check media-query
+  breakpoints) before voting.
+- Real favicon (not the default Vite/Next placeholder) and meaningful
+  <title> derived from AppSpec.meta.title.
+
+### 7c. State coverage (every async surface)
+For every page/panel that loads or submits data, ALL FOUR states MUST be
+explicitly designed:
+- Empty: friendly copy + neutral illustration or icon (e.g. "No jobs yet
+  — submit one above").
+- Loading: skeleton screens or spinners with context ("Resizing 12
+  images…"), NEVER raw "Loading…" text.
+- Error: human-readable message + retry action, NEVER raw error JSON or
+  stack traces.
+- Success: visible confirmation (toast, inline check, or transition to
+  result view).
+
+### 7d. Form quality (the /run input form)
+The input form auto-derived from AppSpec.inputs MUST have:
+- Labels positioned above inputs (NOT placeholder-only).
+- File uploads via drag-and-drop zone with file preview, file name, file
+  size, and remove-button per file.
+- Inline validation errors (red border + helper text under the field).
+- Submit button disabled while submitting + showing a spinner with
+  context ("Uploading…" → "Processing…").
+- For 'files' input type: thumbnail grid for image MIME types; list with
+  type-icon for other types.
+
+### 7e. Result presentation
+The result page MUST present outputs in a way appropriate to their type:
+- Image outputs: gallery view with lightbox-on-click, plus per-image
+  download.
+- File outputs: clear download button with file size and file type label.
+- Text outputs: rendered (markdown if applicable), monospace block for
+  code, with copy-to-clipboard.
+- ZIP outputs: list contents (filename + size) before the download CTA.
+NO "Click here to download result.bin" with no preview or context.
+
+### 7f. Theme
+Pick ONE deliberate theme:
+- Light only (modern, clean — Linear/Notion aesthetic), OR
+- Dark only (developer-tool aesthetic), OR
+- Both with a toggle (toggle MUST persist in localStorage).
+Browser-default styling is a NO vote.
+
+Brand colors: define as CSS variables or Tailwind theme extension. Use a
+single accent color consistently across primary actions.
+AppSpec.ui.accentColor (if present) is the source of truth.
+
+### 7g. Council frontend gate (enforcement)
+Before voting [CONSENSUS: YES], EVERY agent MUST:
+1. Run the dev server in their worktree (\`npm run dev\` or equivalent) and
+   either open the app or analyse the rendered HTML/CSS.
+2. Walk through the primary user flow: load → fill form → submit →
+   loading state → result.
+3. Verify all four states (§7c) actually render — not just exist in code.
+4. Inspect at 375px width (browser devtools or CSS @media query analysis).
+5. Reject (vote NO) with specific UI feedback if the app does not pass
+   the "would a startup ship this" bar. Cite the failed criterion (7a–7f)
+   in the NO vote.
+
+The frontend gate is as binding as the smoke-test gate. A green smoke
+test with a bare-bones UI is still a NO vote.
 `.trim();

@@ -142,6 +142,41 @@ engine or skill drift fails this test loudly. Manual smoke runner at
   to a live process. Legacy bare-number entries are conservatively
   skipped (no kill) and dropped on the next save.
 
+### Added — frontend quality conventions (council §7)
+
+- **`src/ultraapp/conventions.ts` §7 — Frontend quality (mandatory).**
+  Adds a binding architectural section the council reads alongside the
+  rest. Covers: styling system (Tailwind / shadcn / daisyUI / Mantine /
+  Chakra / CSS Modules + tokens — pick one), layout & typography
+  (centered max-width, real type hierarchy, ≥1.5 line-height, 375px
+  responsive, real favicon), state coverage (empty / loading / error /
+  success — all four explicit on every async surface, no raw "Loading…"
+  or error JSON), form quality (labels above, drag-and-drop with
+  previews, inline validation, disabled+spinner submit), result
+  presentation (galleries / lightboxes for images, list-before-CTA for
+  ZIPs), theme (one deliberate light / dark / toggle), and a §7g council
+  frontend gate that every agent must execute before voting YES.
+  "Functional minimum" is now a NO vote. Section 5 voting marker and
+  agent-C persona updated to enforce.
+
+### Added — session-manager cross-process visibility
+
+- **Council transcript enumerator** (`src/session-manager.ts`,
+  `src/council.ts`): `listCouncilsFromDisk()` parses
+  `~/.openclaw/council-logs/*.md` headers; `councilList()` unions
+  in-memory sessions with the disk view (dedup by id, in-memory wins).
+  Council transcripts now embed an `- **ID**: <id>` header line so
+  reconstructed records can dedup reliably; legacy transcripts fall back
+  to filename-derived id.
+- **Autoloop registry** (`src/session-manager.ts`):
+  `appendAutoloopRegistry()` / `listAutoloopsFromRegistry()` backed by
+  append-only `~/.claw-orchestrator/autoloop-registry.jsonl`.
+  `autoloopStart()` records each run; `autoloopList()` unions in-memory
+  runs with registry entries (dedup, stale ledger_dirs filtered,
+  newest-first). Together these give the dashboard cross-process
+  visibility of past runs across plugin-side SessionManager and
+  standalone `clawo serve`.
+
 ### Added — debug tooling
 
 - `UA_DEBUG_TURNS=<dir>` env var: when set, `driveTurn` writes every

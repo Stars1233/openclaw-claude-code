@@ -74,7 +74,10 @@ ${ARCHITECTURAL_CONVENTIONS}
 Refer to the voting protocol in section 5 of the conventions above. Vote
 [CONSENSUS: YES] only when (a) every AppSpec field is implemented, (b) every
 architectural convention is met, (c) "npm run build && npm test && docker
-build . && npm run smoke" all pass green in your worktree.
+build . && npm run smoke" all pass green in your worktree, AND (d) you have
+personally executed the §7g frontend gate (states + responsive + design
+system + form quality + result presentation). A green smoke test with a
+bare-bones UI is still a NO vote.
 `.trim();
 }
 
@@ -143,7 +146,7 @@ function buildCouncilConfig(projectDir: string, slug: string): CouncilConfig {
       {
         name: 'agent-C',
         emoji: '🟢',
-        persona: `${personaIntro} You verify and harden: smoke test, Dockerfile multi-stage, base path correctness, ESLint rule for no-server-keys. You vote NO until "npm run build && npm test && docker build . && npm run smoke" all pass green in your worktree.`,
+        persona: `${personaIntro} You verify and harden: smoke test, Dockerfile multi-stage, base path correctness, ESLint rule for no-server-keys, AND the §7g frontend gate (design system, four-state coverage, responsive at 375px, polished form + result presentation). You vote NO until "npm run build && npm test && docker build . && npm run smoke" all pass green AND the UI clearly meets §7a–§7f. A working but ugly app is a NO vote.`,
         engine: 'claude',
         model: 'claude-opus-4-7',
       },
