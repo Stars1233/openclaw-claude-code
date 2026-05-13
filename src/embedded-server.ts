@@ -565,8 +565,7 @@ export class EmbeddedServer {
             {
               name: 'agent-B',
               emoji: '🟠',
-              persona:
-                'You are agent B, a pragmatic implementer. Make the change small, focused, and review-ready.',
+              persona: 'You are agent B, a pragmatic implementer. Make the change small, focused, and review-ready.',
               engine: 'claude',
               model: 'claude-opus-4-7',
             },

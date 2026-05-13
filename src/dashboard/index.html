@@ -533,7 +533,9 @@
         cursor: pointer;
       }
       .forge-spec-msg { font-size: 11px; color: var(--muted); }
-      #forgeNew {
+      #forgeNew,
+      #councilNew,
+      #autoloopNew {
         margin: 8px 12px;
         padding: 6px 12px;
         border-radius: 4px;
@@ -542,6 +544,109 @@
         color: white;
         cursor: pointer;
         width: calc(100% - 24px);
+      }
+      #forgeNew:hover,
+      #councilNew:hover,
+      #autoloopNew:hover {
+        filter: brightness(0.95);
+      }
+
+      /* ─── Launcher modal (Council / Autoloop forms) ─────────────── */
+      .modal-root {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .modal-root[hidden] { display: none; }
+      .modal {
+        background: var(--surface);
+        border-radius: 8px;
+        min-width: 440px;
+        max-width: 600px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+      }
+      .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .modal-header h2 { margin: 0; font-size: 15px; }
+      .modal-header button {
+        background: transparent;
+        border: none;
+        font-size: 22px;
+        cursor: pointer;
+        color: var(--muted);
+        padding: 0 6px;
+      }
+      .modal-body {
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .modal-body label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .modal-body input,
+      .modal-body textarea {
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font: inherit;
+        color: var(--text);
+        background: var(--bg);
+      }
+      .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 20px 18px;
+      }
+      .modal-footer button {
+        padding: 6px 14px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        cursor: pointer;
+        font: inherit;
+      }
+      .modal-footer button.primary {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+      }
+      .modal-footer button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* ─── Empty-state CTA ──────────────────────────────────────── */
+      .empty-cta {
+        text-align: center;
+        margin: 80px auto 0;
+        max-width: 420px;
+      }
+      .empty-cta h2 { margin: 0 0 8px; font-size: 16px; }
+      .empty-cta p { margin: 0 0 16px; color: var(--muted); }
+      .empty-cta button {
+        padding: 8px 16px;
+        border-radius: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        font: inherit;
       }
       #forgeStartBuild {
         margin-top: 8px;
@@ -602,7 +707,9 @@
       <div class="body">
         <aside class="sidebar">
           <h2 id="sidebarTitle">Runs</h2>
-          <button id="forgeNew" hidden>+ New</button>
+          <button id="autoloopNew" hidden>+ New autoloop</button>
+          <button id="councilNew" hidden>+ New council</button>
+          <button id="forgeNew" hidden>+ New forge</button>
           <ul class="runlist" id="runlist"></ul>
         </aside>
 
@@ -612,6 +719,60 @@
       </div>
 
       <div class="footer">SSE-driven dashboard • served by claw-orchestrator embedded server</div>
+    </div>
+
+    <!-- ─── Launcher modal (tab-aware) ───────────────────────────────── -->
+    <div id="modalRoot" class="modal-root" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h2 id="modalTitle">New run</h2>
+          <button id="modalClose" type="button" aria-label="Close">×</button>
+        </div>
+        <form id="modalForm" class="modal-body" autocomplete="off">
+          <!-- Council fields -->
+          <div data-for-tab="council" style="display: contents">
+            <label>
+              Task
+              <textarea
+                name="task"
+                rows="3"
+                placeholder="What should the council achieve?"
+              ></textarea>
+            </label>
+            <label>
+              Project directory
+              <input
+                name="projectDir"
+                type="text"
+                placeholder="/Users/fanggan/.../workspace"
+              />
+            </label>
+            <label>
+              Max rounds
+              <input name="maxRounds" type="number" min="1" max="50" value="15" />
+            </label>
+          </div>
+          <!-- Autoloop fields -->
+          <div data-for-tab="autoloop" style="display: contents">
+            <label>
+              Workspace
+              <input
+                name="workspace"
+                type="text"
+                placeholder="/Users/fanggan/.../workspace (must be a git repo)"
+              />
+            </label>
+            <label>
+              Planner model (optional)
+              <input name="planner_model" type="text" placeholder="claude-opus-4-7" />
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" id="modalCancel">Cancel</button>
+            <button type="submit" id="modalSubmit" class="primary">Start</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <script>
@@ -671,6 +832,8 @@
               ? 'Council sessions'
               : 'Forge apps';
         $('forgeNew').hidden = tab !== 'forge';
+        $('councilNew').hidden = tab !== 'council';
+        $('autoloopNew').hidden = tab !== 'autoloop';
         state.selectedId = null;
         closeStreams();
         renderEmptyMain();
@@ -705,7 +868,33 @@
       }
 
       function renderEmptyMain() {
-        $('main').innerHTML = '<div class="empty" style="margin-top:80px">Select a run to view.</div>';
+        // When the sidebar list is empty, invite the user to start their
+        // first run. Otherwise just say "pick one". The button delegates
+        // to the same launcher trigger as the sidebar "+ New" button.
+        const labels = {
+          autoloop: 'autoloop run',
+          council: 'council session',
+          forge: 'forge app',
+        };
+        const noun = labels[state.tab] || 'run';
+        if (state.runs.length === 0) {
+          const triggerId =
+            state.tab === 'autoloop'
+              ? 'autoloopNew'
+              : state.tab === 'council'
+                ? 'councilNew'
+                : 'forgeNew';
+          $('main').innerHTML = `
+            <div class="empty empty-cta">
+              <h2>No ${escapeHtml(noun)}s yet</h2>
+              <p>Click <strong>+ New</strong> in the sidebar to start your first one.</p>
+              <button type="button" onclick="document.getElementById('${triggerId}').click()">+ New ${escapeHtml(noun)}</button>
+            </div>
+          `;
+        } else {
+          $('main').innerHTML =
+            '<div class="empty" style="margin-top:80px">Select a run to view.</div>';
+        }
       }
 
       // ─── List polling ─────────────────────────────────────────────
@@ -727,6 +916,9 @@
                 ? j.councils || []
                 : j.runs || [];
           renderList();
+          // Refresh the empty-state CTA — runs may have just appeared or
+          // disappeared, and renderEmptyMain's text depends on state.runs.length.
+          if (!state.selectedId) renderEmptyMain();
           $('status').textContent = 'connected';
         } catch (err) {
           $('status').textContent = 'disconnected';
@@ -1604,7 +1796,98 @@
         el.scrollTop = el.scrollHeight;
       }
 
+      // ─── Modal launcher (Council / Autoloop) ─────────────────────
+      //
+      // forgeNew uses a different shape (no form: ultraapp is interview-
+      // driven, so POST /ultraapp/new with an empty body is enough). For
+      // Council / Autoloop we need real form input; one modal handles
+      // both, switching visible fields by state.tab.
+      function openLauncherModal() {
+        const root = $('modalRoot');
+        $('modalTitle').textContent =
+          state.tab === 'council' ? 'New Council session' : 'New Autoloop run';
+        root.querySelectorAll('[data-for-tab]').forEach((el) => {
+          const visible = el.dataset.forTab === state.tab;
+          el.style.display = visible ? 'contents' : 'none';
+          // Only the visible group's required fields actually count.
+          el.querySelectorAll('input,textarea').forEach((f) => {
+            if (visible && (f.name === 'task' || f.name === 'projectDir' || f.name === 'workspace')) {
+              f.required = true;
+            } else {
+              f.required = false;
+            }
+          });
+        });
+        root.hidden = false;
+        setTimeout(() => {
+          const firstVisible = root.querySelector(
+            `[data-for-tab="${state.tab}"] input, [data-for-tab="${state.tab}"] textarea`,
+          );
+          firstVisible?.focus();
+        }, 0);
+      }
+      function closeLauncherModal() {
+        $('modalRoot').hidden = true;
+        $('modalForm').reset();
+      }
+      $('councilNew').addEventListener('click', openLauncherModal);
+      $('autoloopNew').addEventListener('click', openLauncherModal);
+      $('modalClose').addEventListener('click', closeLauncherModal);
+      $('modalCancel').addEventListener('click', closeLauncherModal);
+      $('modalRoot').addEventListener('click', (e) => {
+        if (e.target.id === 'modalRoot') closeLauncherModal();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !$('modalRoot').hidden) closeLauncherModal();
+      });
+      $('modalForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const body = {};
+        if (state.tab === 'council') {
+          body.task = (fd.get('task') || '').toString().trim();
+          body.projectDir = (fd.get('projectDir') || '').toString().trim();
+          const mr = (fd.get('maxRounds') || '').toString().trim();
+          if (mr) body.maxRounds = Number(mr);
+        } else if (state.tab === 'autoloop') {
+          body.workspace = (fd.get('workspace') || '').toString().trim();
+          const pm = (fd.get('planner_model') || '').toString().trim();
+          if (pm) body.planner_model = pm;
+        }
+        const url = state.tab === 'council' ? '/council/new' : '/autoloop/new';
+        const submitBtn = $('modalSubmit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Starting...';
+        try {
+          const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const j = await r.json();
+          if (!j.ok) {
+            alert('Failed: ' + (j.error || `HTTP ${r.status}`));
+            return;
+          }
+          const id = j.id ?? j.run_id;
+          closeLauncherModal();
+          await refreshList();
+          state.selectedId = id;
+          renderList();
+          openDetail(id);
+        } catch (err) {
+          alert('Failed: ' + err.message);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Start';
+        }
+      });
+
       // ─── Boot ────────────────────────────────────────────────────
+      // Make the right "+ New" button visible for the default tab.
+      $('autoloopNew').hidden = state.tab !== 'autoloop';
+      $('councilNew').hidden = state.tab !== 'council';
+      $('forgeNew').hidden = state.tab !== 'forge';
       refreshList();
     </script>
   </body>
