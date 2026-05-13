@@ -102,11 +102,9 @@ await manager.autoloopChat("my-run", "go");
 
 SSE stream at `GET /autoloop/<id>/events` (the upcoming 3-pane UI subscribes here). See [`skills/references/autoloop.md`](./skills/references/autoloop.md) for the full operator reference: tool list, push policy, ledger layout, smoke test.
 
-### ultraapp (Forge tab — v1.0)
+### ultraapp (Forge tab)
 
-Turn a structured Q&A interview into a deployable web app. Open the dashboard's Forge tab, click `+ New`, walk through the AppSpec interview (Claude Opus asks one question per turn with recommended options), click `Start Build` to dispatch a 3-agent council that synthesises a complete codebase + a fix-on-failure helper that drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green, then watch the share card appear in chat with the live URL at `http://localhost:19000/forge/<slug>/`. A per-build Haiku narrator translates the structured event stream into short, language-matched chat updates so the user knows what's happening without reading raw event JSON. Sidebar items grow start/stop/delete controls; `Make Public…` shows copy-pastable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets so you can expose the app yourself. Post-deploy chat input is classified (cosmetic / spec-delta / structural) — cosmetic feedback runs the patcher (Opus diff + validate + auto-revert + version snapshot); spec-delta flips back to a focused interview; structural suggests a new run. A JSONL reference-trace replayer + frozen AppSpec snapshots guard the interview engine against regressions (`tsx test-ultraapp-integration.ts --trace=all`).
-
-**Frontend quality is enforced by the council.** Convention §7 (in `src/ultraapp/conventions.ts`) is binding alongside the runtime/routing rules: every generated app must use a real styling system (Tailwind / shadcn / daisyUI / Mantine / Chakra / CSS Modules + tokens), present empty / loading / error / success states explicitly on every async surface, ship drag-and-drop forms with previews and inline validation, and present results appropriate to their type (image galleries, ZIP contents listing, etc.). Each council agent runs the §7g frontend gate before voting YES — a green smoke test with a bare-bones UI is a NO vote. The bar is "would a startup ship this", not "it works".
+A 3-agent Opus council turns a 5-question interview into a deployed web app — Tailwind UI, BYOK, file-queue runtime, smoke test, all live at `localhost:19000/forge/<slug>/`. Iterate via chat: cosmetic ("make button green") runs an Opus patcher; spec-delta ("also output a thumbnail") flips back to a focused interview and rebuilds. See [`skills/references/ultraapp.md`](./skills/references/ultraapp.md).
 
 ### Tool Orchestration
 
@@ -157,17 +155,13 @@ clawo council start "Refactor the API layer and add tests"
 
 ### Quick Start: ultraapp
 
-Turn a structured Q&A interview into a deployed web app:
+```bash
+clawo serve   # dashboard at :18796, router at :19000
+```
 
-1. `clawo serve` (boots the dashboard at `:18796` and the ultraapp router at `:19000`)
-2. Open `http://127.0.0.1:18796/dashboard?token=$(cat ~/.openclaw/server-token)` and pick the **Forge** tab
-3. Click **+ New** and walk the interview (≈ 5–8 questions; each has a recommended option — Submit it unless you disagree)
-4. Click **Start Build**. Council writes a complete codebase; fix-on-failure drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green; deploy registers the slug with the router.
-5. The share card appears in chat with the live URL: `http://127.0.0.1:19000/forge/<slug>/`. Hit it from a browser to use your app.
-6. Iterate via chat: type "make button green" → cosmetic patch (Opus diff + validate + version snapshot); type "also output a thumbnail" → spec-delta focused interview + auto-rerun. Promote any version from the AppSpec column.
-7. Want to share? Click **Make Public…** for copy-pasteable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+Open the dashboard, pick **Forge → + New**, walk the interview (≈5–8 questions, each with a recommended option), click **Start Build**. The share card lands in chat with the live URL. Iterate via chat for cosmetic / spec-delta changes; **Make Public…** gives Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
 
-Driveable headlessly via the same HTTP routes the dashboard uses (`/ultraapp/new` → `/answer` → `/build` → `/feedback`) — see `skills/ultraapp/SKILL.md` for the interview contract and `src/__tests__/fixtures/ultraapp-traces/_format.md` for the JSONL trace format. Every operation is also exposed as an MCP tool (`ultraapp_new`, `ultraapp_answer`, `ultraapp_build_start`, `ultraapp_feedback`, `ultraapp_promote_version`, etc.) so any MCP host can drive ultraapp end-to-end.
+Driveable headlessly via 14 MCP tools (`ultraapp_new` / `_answer` / `_build_start` / `_feedback` / `_promote_version` / …) or the matching HTTP routes — see [`skills/references/ultraapp.md`](./skills/references/ultraapp.md).
 
 ### As an OpenClaw plugin
 

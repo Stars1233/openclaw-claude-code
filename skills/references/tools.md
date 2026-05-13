@@ -414,3 +414,186 @@ Get status and findings when completed.
 | Parameter | Type | Required |
 |-----------|------|----------|
 | `id` | string | yes |
+
+---
+
+## Autoloop (6)
+
+Three-agent autonomous iteration loop (Planner / Coder / Reviewer) over a git workspace. See [`autoloop.md`](./autoloop.md) for the operator reference (push policy, ledger layout, smoke test).
+
+### `autoloop_start`
+
+Start an autoloop run. Planner is created persistent; Coder + Reviewer are spawned by the Planner once `plan.md` is ready.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cwd` | string | yes | Workspace (must be a git repo) |
+| `goal` | string | yes | High-level user goal in natural language |
+| `model` | string | | Planner model (default Opus) |
+| `coderModel` | string | | Coder subagent model |
+| `reviewerModel` | string | | Reviewer subagent model |
+| `maxIters` | number | | Cap on Coder/Reviewer rounds (default 50) |
+| `pushChannels` | string[] | | Notification channels (`wechat`, `whatsapp`, `email`) |
+
+### `autoloop_chat`
+
+Send a message into the Planner conversation (e.g. answer a clarifying question, refine the plan, kick off the subloop).
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+| `message` | string | yes |
+
+### `autoloop_status`
+
+Get current state, phase, recent inbox messages, and ledger summary.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `autoloop_list`
+
+List active and recent autoloop runs (in-memory + on-disk registry, deduped by run_id).
+
+(no params)
+
+### `autoloop_reset_agent`
+
+Reset one of the subagent sessions (Coder or Reviewer) without losing Planner state — useful when a subagent loops on a stale belief.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | yes | Run id |
+| `agent` | `'coder'` \| `'reviewer'` | yes | Which subagent to reset |
+
+### `autoloop_stop`
+
+Terminate the run. All sessions are stopped and ledger state is finalised.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+---
+
+## Ultraapp (14)
+
+Forge tab — turn a structured Q&A interview into a deployed web app reachable at `localhost:19000/forge/<slug>/`. See [`ultraapp.md`](./ultraapp.md) for the operator reference (lifecycle, conventions §1–§7, runtime modes, file layout, HTTP routes).
+
+### `ultraapp_list`
+
+List all ultraapp runs.
+
+(no params)
+
+### `ultraapp_get`
+
+Full snapshot of a run: spec + chat + state.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_status`
+
+Lightweight status (mode + timestamps).
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_new`
+
+Create a fresh run. Optionally seeds the interview with the user's first message.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `firstMessage` | string | | Free-form opening line; the interview Opus reads it before its first question |
+
+### `ultraapp_answer`
+
+Submit an answer to the current interview question.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | yes | Run id |
+| `value` | string | yes | One of the question's `options[].value`, or `''` when using freeform |
+| `freeform` | string | | Free-form text when none of the options fit |
+
+### `ultraapp_add_file`
+
+Upload a sample file to `examples/` (the interview engine will `extract_metadata` it).
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+| `path` | string | yes |
+| `content` | string \| Buffer | yes |
+
+### `ultraapp_spec_edit`
+
+Apply RFC 6902 JSON Patch ops to the AppSpec mid-interview.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+| `patch` | object[] | yes |
+
+### `ultraapp_build_start`
+
+Validate the spec strictly (shape + cross-refs + DAG) and enqueue the build. Council picks it up FIFO.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_build_cancel`
+
+Abort an active build. Council sessions are stopped and the worktrees are left as-is for inspection.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_feedback`
+
+Done-mode feedback. Haiku classifier routes into `cosmetic` (Opus patcher), `spec-delta` (focused interview + auto-rerun), or `structural` (suggest fresh run).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | yes | Run id |
+| `text` | string | yes | The feedback (1+ chars) |
+
+### `ultraapp_promote_version`
+
+Atomically swap the deployed version. Stops the current container/process, starts the target's, updates the router map.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | yes | Run id |
+| `version` | string | yes | Target version label (`v1`, `v2`, …) |
+
+### `ultraapp_start_container`
+
+Start the container/process for the active version (no-op if already running).
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_stop_container`
+
+Stop the container/process without deleting any state.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |
+
+### `ultraapp_delete`
+
+Stop + remove the run completely (sessions, container, on-disk state, router entry).
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `id` | string | yes |

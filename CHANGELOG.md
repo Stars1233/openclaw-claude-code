@@ -96,13 +96,23 @@ interview engine and asserts the resulting AppSpec matches — any future
 engine or skill drift fails this test loudly. Manual smoke runner at
 `test-ultraapp-integration.ts`.
 
-#### Skill
+#### Skill + reference docs
 
 - **`skills/ultraapp/SKILL.md`** — interview behavioural contract +
   question-envelope schema + tool-call contract + ending criteria. Refined
   based on real-trace findings: tool-call + question in the same reply
   is the encouraged pattern; stop-early guidance to avoid over-asking
   (typical complete spec lands in 5–8 questions).
+- **`skills/references/ultraapp.md`** (new) — operator reference: lifecycle,
+  conventions §1–§7 summary, runtime modes, file layout, all 14 MCP tools
+  + matching HTTP routes, done-mode classifier behaviour, reference-trace
+  replayer, known limitations.
+- **`skills/references/tools.md`** — adds Autoloop (6) and Ultraapp (14)
+  sections with full param schemas; total declared tool count now matches
+  the 55 registered in `src/index.ts`.
+- **`skills/SKILL.md`** + **`skills/claw-orchestrator/SKILL.md`** —
+  description and trigger keywords now include ultraapp / Forge tab /
+  AppSpec / one-click app, and tool counts updated from 35/41 to 55.
 
 #### Runtime dep
 
