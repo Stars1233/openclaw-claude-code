@@ -46,9 +46,18 @@ resulting on-disk `spec.json` is compared against the matching
 
 ## Status of bundled traces
 
-- **text-summariser** — synthetic hand-crafted reference; demonstrates the
-  format. Real-API-captured replacements should land as user follow-up.
-- **image-batch-resize**, **vlog-cut**, **llm-agent-pipeline**,
-  **branching-dag** — planned in v1.0; deferred (require live LLM
-  authoring). When each lands, drop the `.jsonl` + `expected/*.appspec.json`
-  here and append to `TRACES`.
+All 5 reference traces from the v1.0 plan ship and replay successfully
+against their frozen AppSpec snapshots:
+
+- **text-summariser** — synthetic / hand-crafted (1 input, 1 step, 1 output).
+- **image-batch-resize** — captured against real Claude Opus
+  (4 inputs, 1 output, 3 steps).
+- **vlog-cut** — captured (2 inputs, 1 output, 4 steps).
+- **llm-agent-pipeline** — captured (2 inputs, 1 output, 3 steps).
+- **branching-dag** — captured (2 inputs, 2 outputs, 3 steps; true DAG with
+  parallel branches that converge).
+
+To author a new trace, set `UA_DEBUG_TURNS=<dir>` on the server, drive an
+interview to completion, and the script in this directory's git history
+shows the reconstruction recipe (parse turn outputs → claude-* + user-*
+JSONL entries; final on-disk `spec.json` becomes the expected snapshot).
