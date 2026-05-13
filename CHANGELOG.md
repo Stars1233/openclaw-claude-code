@@ -686,7 +686,7 @@ Project repositioned as **Claw Orchestrator** — a multi-engine coding-agent ru
 - OpenClaw plugin id renamed: `openclaw-claude-code` → `claw-orchestrator`. The new `install.sh` strips legacy v2.x entries from `~/.openclaw/openclaw.json` automatically on upgrade and warns if the legacy global package is still installed.
 - CLI binary renamed: `claude-code-skill` → `clawo`. The old binary remains installed as an alias for the v3.0.x line and will be removed in v3.1.
 - Skill name renamed: `claude-code-skill` → `claw-orchestrator`. The `skills/claude-code-skill/` directory is preserved as a back-compat symlink for the v3.0.x line.
-- Banner updated; the v2.x banner is preserved at `assets/banner-legacy.jpg`.
+- Banner updated.
 - Log prefixes updated from `[openclaw-claude-code]` to `[claw-orchestrator]`.
 
 ### Breaking — Tool API rename (with deprecation aliases)
