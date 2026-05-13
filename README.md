@@ -108,7 +108,7 @@ Turn a structured Q&A interview into a deployable web app. Open the dashboard's 
 
 ### Tool Orchestration
 
-Expose coding sessions as tools so other agents and systems can control them. The runtime registers 40 tools, including:
+Expose coding sessions as tools so other agents and systems can control them. The runtime registers 55 tools, including:
 
 ```txt
 session_start         session_send         coding_session_status
@@ -117,6 +117,8 @@ team_send             team_list            coding_agents_list
 council_start         council_review       council_accept
 ultraplan_start       ultrareview_start
 autoloop_start        autoloop_chat        autoloop_reset_agent
+ultraapp_new          ultraapp_answer      ultraapp_build_start
+ultraapp_feedback     ultraapp_promote_version
 ```
 
 ---
@@ -163,7 +165,7 @@ This installs via npm, registers the plugin in `~/.openclaw/openclaw.json`, and 
 
 ### As an MCP server (Hermes Agent, Claude Desktop, Cursor, Cline, Continue, Zed, Windsurf, Goose)
 
-Every host that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can pick up the orchestrator's full toolset (41 tools — sessions, council, ultraplan, ultrareview, autoloop, codex, inbox) over stdio.
+Every host that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can pick up the orchestrator's full toolset (55 tools — sessions, council, ultraplan, ultrareview, autoloop, ultraapp, codex, inbox) over stdio.
 
 ```bash
 npm install -g @enderfga/claw-orchestrator
@@ -217,7 +219,7 @@ Every one of these hosts speaks the standard MCP stdio config. Add `clawo-mcp` a
 **Notes**
 
 - Hosts prefix MCP tool names with the server slug (e.g. `mcp_clawo_session_start` in Hermes). The model sees the prefixed name; you don't need to call it manually.
-- `CLAWO_MCP_TOOLS` (comma-separated allowlist) keeps the exposed surface tight when the host has a tight tool budget. Without it, all 41 tools are advertised.
+- `CLAWO_MCP_TOOLS` (comma-separated allowlist) keeps the exposed surface tight when the host has a tight tool budget. Without it, all 55 tools are advertised.
 - Hosts do not forward arbitrary shell env vars to MCP servers — list every API key your engines need (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.) explicitly under `env`.
 
 Full reference: [`skills/references/mcp.md`](./skills/references/mcp.md).

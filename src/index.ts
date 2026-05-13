@@ -1437,7 +1437,7 @@ const plugin = {
     api.registerTool({
       name: 'ultraapp_promote_version',
       description:
-        'Atomically swap which previously-built version is currently deployed. Stops the old container, starts the target version\'s container, updates the router map. Requires a router to be wired (see clawo serve).',
+        "Atomically swap which previously-built version is currently deployed. Stops the old container, starts the target version's container, updates the router map. Requires a router to be wired (see clawo serve).",
       parameters: {
         type: 'object',
         properties: {

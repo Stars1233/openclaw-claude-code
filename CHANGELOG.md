@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ultraapp v0.6** — full MCP write surface. The previous 3 read-only MCP
+  tools (`ultraapp_list/get/status`) are joined by 11 write tools so any
+  MCP host (OpenClaw gateway, Hermes Agent, Claude Desktop, Cursor, etc.)
+  can drive ultraapp end-to-end without going through the dashboard:
+  `ultraapp_new`, `ultraapp_answer`, `ultraapp_add_file` (path-mode only —
+  binary uploads stay browser-side), `ultraapp_spec_edit`,
+  `ultraapp_build_start`, `ultraapp_build_cancel`, `ultraapp_feedback`,
+  `ultraapp_promote_version`, `ultraapp_start_container`,
+  `ultraapp_stop_container`, `ultraapp_delete`. All declared in
+  `openclaw.plugin.json` so the gateway sees them at registration time.
 - **ultraapp v1.0** — reference-trace harness. Reference traces are JSONL
   recordings of an interview (Claude question envelopes + user answers +
   tool calls) that the trace replayer feeds through the real interview

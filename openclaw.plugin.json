@@ -98,7 +98,21 @@
       "ultraplan_start",
       "ultraplan_status",
       "ultrareview_start",
-      "ultrareview_status"
+      "ultrareview_status",
+      "ultraapp_list",
+      "ultraapp_get",
+      "ultraapp_status",
+      "ultraapp_new",
+      "ultraapp_answer",
+      "ultraapp_add_file",
+      "ultraapp_spec_edit",
+      "ultraapp_build_start",
+      "ultraapp_build_cancel",
+      "ultraapp_feedback",
+      "ultraapp_promote_version",
+      "ultraapp_start_container",
+      "ultraapp_stop_container",
+      "ultraapp_delete"
     ]
   },
   "skills": ["skills/SKILL.md"]
