@@ -5,159 +5,144 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.0] - 2026-05-13
+
+### Added — ultraapp (Forge tab)
+
+A new dashboard tab and a 14-tool MCP surface that turns a structured Q&A
+interview into a deployed web app reachable at `localhost:19000/forge/<slug>/`,
+with a post-deploy feedback loop and a reference-trace regression harness.
+
+Roughly: open Forge → answer 5–8 questions (each with a recommended option) →
+click Start Build → council writes a complete codebase, fix-on-failure drives
+`npm install && npm run build && npm test && docker build .` to green, deploy
+registers the slug → share-card URL appears in chat. Iterate via chat:
+"make button green" → cosmetic patcher; "also output a thumbnail" →
+spec-delta focused interview + auto-rerun. Versions tagged `v1`, `v2`, ...
+and switchable via Promote.
+
+#### Pipeline
+
+- **Interview engine** (`src/ultraapp/interview-parser.ts`,
+  `src/ultraapp/interview-tools.ts`): structured Q&A envelopes with
+  recommended option, free-form fallback, contextual citations.
+  `update_spec` (RFC 6902 JSON Patch), `extract_metadata` (file probe /
+  ffprobe), `check_completeness` tool calls. Mid-reply tool-call + question
+  bundling supported.
+- **Council super-task** (`src/ultraapp/council-adapter.ts`): three Claude
+  Opus agents in fresh git worktrees of a per-run project dir reach
+  consensus by 3-way YES vote (uses the existing `Council` class).
+- **Fix-on-failure helper** (`src/ultraapp/fix-on-failure.ts`): purpose-
+  built ~50-line loop that drives `npm install / build / test / docker
+  build` and spawns a Claude Opus fixer session on red, up to N rounds.
+  Replaces the original autoloop adapter (different problem shape).
+- **Build queue** (`src/ultraapp/build.ts`): global serial FIFO with 11
+  `BuildEvent` variants and live position reporting.
+- **Deploy + reverse-proxy router** (`src/ultraapp/deploy.ts`,
+  `src/ultraapp/router.ts`, `src/ultraapp/lifecycle.ts`,
+  `src/ultraapp/docker.ts`): `docker build` + `docker run -d --restart
+  unless-stopped` on a dynamic port in `[19100, 19999]`; Node-only
+  reverse proxy at port 19000 (with port-fallback) maps
+  `/forge/<slug>/*` to backends; slug map persists to `_router.json`
+  for survival across orchestrator restarts.
+- **Narrator** (`src/ultraapp/narrator.ts`): per-run Claude Haiku session
+  batches build events (every 6 / 15s / urgent) and writes short
+  conversational chat updates instead of raw event lines. Language
+  auto-detected (Chinese / English) from prior interview chat. Falls
+  back to raw lines if Haiku is unavailable.
+- **Done-mode feedback loop** (`src/ultraapp/feedback-classifier.ts`,
+  `src/ultraapp/patcher.ts`, `src/ultraapp/spec-delta.ts`,
+  `src/ultraapp/versions.ts`, `src/ultraapp/diff-apply.ts`): post-deploy
+  chat is classified by Haiku into cosmetic / spec-delta / structural and
+  routed: cosmetic → Opus patcher (unified diff + apply + validate +
+  auto-revert + version snapshot); spec-delta → focused interview
+  bootstrap + auto-rerun on completion; structural → suggest fresh run.
+  Versions snapshot to `versions/vN/` and swap atomically via the router.
+
+#### Surface
+
+- **MCP tools (14):** `ultraapp_list`, `ultraapp_get`, `ultraapp_status`,
+  `ultraapp_new`, `ultraapp_answer`, `ultraapp_add_file`,
+  `ultraapp_spec_edit`, `ultraapp_build_start`, `ultraapp_build_cancel`,
+  `ultraapp_feedback`, `ultraapp_promote_version`,
+  `ultraapp_start_container`, `ultraapp_stop_container`, `ultraapp_delete`.
+  All declared in `openclaw.plugin.json`.
+- **HTTP routes:** `/ultraapp/{list, new, <id>, <id>/answer,
+  <id>/spec-edit, <id>/files, <id>/events (SSE), <id>/build,
+  <id>/build/cancel, <id>/artifacts, <id>/start, <id>/stop, <id>/delete,
+  <id>/feedback, <id>/promote-version}`.
+- **Dashboard:** Forge tab with three-column layout (chat / spec / files).
+  Mode pill (interview → queued → building → build-complete | deploying →
+  done | failed). Chat input mode-aware: in interview mode submits to
+  `/answer`; in done mode submits to `/feedback`. Versions panel in the
+  AppSpec column with per-version Promote button. Sidebar lifecycle
+  buttons (start / stop / delete). `Make Public…` modal with
+  Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+
+#### Reference traces
+
+5 JSONL traces of real interviews (text-summariser, image-batch-resize,
+vlog-cut, llm-agent-pipeline, branching-dag) under
+`src/__tests__/fixtures/ultraapp-traces/`. Each pairs with a frozen
+`expected/<name>.appspec.json` snapshot. The
+`spec-extraction-quality.test.ts` test replays each trace through the
+interview engine and asserts the resulting AppSpec matches — any future
+engine or skill drift fails this test loudly. Manual smoke runner at
+`test-ultraapp-integration.ts`.
+
+#### Skill
+
+- **`skills/ultraapp/SKILL.md`** — interview behavioural contract +
+  question-envelope schema + tool-call contract + ending criteria. Refined
+  based on real-trace findings: tool-call + question in the same reply
+  is the encouraged pattern; stop-early guidance to avoid over-asking
+  (typical complete spec lands in 5–8 questions).
+
+#### Runtime dep
+
+- New: `diff` (BSD-2; powers the patcher's unified-diff applier).
 
 ### Fixed
 
-- **ultraapp interview parser** — when Claude returned `<tool name=...>` calls
-  AND a fenced \`\`\`question block in a single reply, `parseInterviewReply`
-  used to return kind `'tools'` and silently drop the question. The followup
-  `tool_result` driveTurn would get a free-text reply ("Waiting on the X
-  question above.") and the interview would stall — the question was lost
-  forever. Now returns a new `'tools-and-question'` kind; the manager runs
-  the tools, surfaces the question to the user immediately, and fires the
-  `tool_result` followup in the background. Surfaced while running real
-  reference-trace captures (see v1.0 entry below).
+- **Interview parser tools+question dropping** (`interview-parser.ts`):
+  when Claude returned `<tool name=...>` calls AND a fenced \`\`\`question
+  block in a single reply, the parser used to return kind `'tools'` and
+  silently drop the question. The follow-up tool_result driveTurn would
+  get a free-text reply ("Waiting on the X question above.") and the
+  interview would stall. Now returns a `'tools-and-question'` kind; the
+  manager runs the tools, surfaces the question to the user immediately,
+  and fires the tool_result follow-up in the background.
+- **Spec validator over-strictness** (`spec.ts`, `store.ts`,
+  `manager.ts`): `validateAppSpec` ran on every `writeSpec`, meaning
+  every intermediate `update_spec` patch had to pass full cross-ref +
+  DAG checks. But Claude builds the spec incrementally; transient
+  invalid states (a step refs an undeclared input) are normal mid-
+  interview but were rejected, leaving Claude to retry-loop and punt the
+  pipeline (`spec.pipeline.steps` stayed `[]` for non-trivial captures).
+  Split into `validateAppSpecShape` (lax: version + runId + name regex;
+  called from `writeSpec`) and `validateAppSpec` (strict: shape +
+  cross-refs + DAG; called from `startBuild` before enqueueing). Build
+  no longer starts on an invalid spec.
+- **PID-file cross-process safety** (`session-manager.ts`): the host-
+  shared `~/.openclaw/session-pids.json` had no notion of which
+  SessionManager process owned each entry. Two consequences: (1) every
+  `_savePids` call overwrote the file, erasing other live managers'
+  entries; (2) every `_cleanupOrphanedPids` constructor pass would kill
+  any pid in the file whose process was alive AND looked like a coding
+  CLI. Result: starting a fresh SessionManager (e.g., for a smoke test)
+  killed the children of the existing gateway SessionManager. Now each
+  entry is tagged with `{ pid, ownerPid, since }`; saves do read-merge-
+  write keyed by ownerPid; cleanup skips entries whose ownerPid points
+  to a live process. Legacy bare-number entries are conservatively
+  skipped (no kill) and dropped on the next save.
 
-### Added
+### Added — debug tooling
 
-- **ultraapp debug hook** — `UA_DEBUG_TURNS=<dir>` env flag. When set,
-  every `driveTurn` writes its raw `(in, out)` pair to
-  `<dir>/<runId>.turns.jsonl`. Off by default; production behavior
-  unchanged. Used by trace-capture scripts to reconstruct full trace JSONL
-  (incl. tool calls, which never appear in `chat.jsonl`).
-- **ultraapp v0.6** — full MCP write surface. The previous 3 read-only MCP
-  tools (`ultraapp_list/get/status`) are joined by 11 write tools so any
-  MCP host (OpenClaw gateway, Hermes Agent, Claude Desktop, Cursor, etc.)
-  can drive ultraapp end-to-end without going through the dashboard:
-  `ultraapp_new`, `ultraapp_answer`, `ultraapp_add_file` (path-mode only —
-  binary uploads stay browser-side), `ultraapp_spec_edit`,
-  `ultraapp_build_start`, `ultraapp_build_cancel`, `ultraapp_feedback`,
-  `ultraapp_promote_version`, `ultraapp_start_container`,
-  `ultraapp_stop_container`, `ultraapp_delete`. All declared in
-  `openclaw.plugin.json` so the gateway sees them at registration time.
-- **ultraapp v1.0** — reference-trace harness. Reference traces are JSONL
-  recordings of an interview (Claude question envelopes + user answers +
-  tool calls) that the trace replayer feeds through the real interview
-  engine against a stubbed `SessionManager`. Each trace ships with a
-  frozen `expected/<name>.appspec.json` snapshot; the
-  `spec-extraction-quality.test.ts` test asserts replay output matches.
-  Future interview-engine or skill changes that drift the captured spec
-  fail this test loudly. New manual smoke runner
-  `tsx test-ultraapp-integration.ts --trace=<name|all>` exercises the
-  replay path outside CI.
-  - Bundled trace: **text-summariser** (synthetic, hand-crafted to
-    demonstrate the format).
-  - **User follow-up:** the v1.0 plan calls for 4 additional captured
-    traces — `image-batch-resize`, `vlog-cut`, `llm-agent-pipeline`,
-    `branching-dag` — that need a real Anthropic API run to author. Drop
-    each as `<name>.jsonl` + `expected/<name>.appspec.json` and append
-    to `TRACES` in `spec-extraction-quality.test.ts`. Format spec at
-    `src/__tests__/fixtures/ultraapp-traces/_format.md`.
-  - **Findings from real-API capture attempt (2026-05-13)**: drove
-    `image-batch-resize` end-to-end via `/ultraapp/new` → `/answer` loop
-    against real Claude Opus. Surfaced two issues that block clean
-    regression-trace authoring with the "always pick recommended" strategy:
-    (1) when the council pre-validates `update_spec` patches strictly,
-    `pipeline.steps` patches were rejected and Claude punted the pipeline
-    to the builder — leaving an incomplete spec; (2) the
-    "always-pick-recommended" answer strategy is too dumb — Claude
-    sometimes asks the same question multiple ways or asks meta-questions
-    ("validator keeps rejecting; how do you want to proceed?") which a
-    smarter answer policy would handle. Both findings argue for capturing
-    traces by hand (operator drives + occasionally overrides) rather than
-    via a script. Recipe in `src/__tests__/fixtures/ultraapp-traces/_format.md`.
-  - Companion fix shipped from the same capture session: the parser bug
-    where `<tool>` calls + a fenced \`\`\`question in the same reply caused
-    the question to be silently dropped (interview would stall). See the
-    Fixed section below.
-  - **Out of scope here (intentionally):** version bump to 4.0.0 and the
-    associated release tag. Per project rules, public-facing release
-    text needs explicit user approval first; the v1.0 release decision
-    + tag remains a user-side action.
-- **ultraapp v0.5** — done-mode feedback loop. After a run reaches `done`,
-  any chat message is classified by a Haiku call into one of three buckets
-  and routed accordingly:
-  - **cosmetic** → an Opus patcher session emits a unified diff, the diff
-    is applied to a fresh codebase copy, `runFixOnFailure` validates it,
-    on success the result is snapshotted as the next `vN` (auto-revert
-    on failure).
-  - **spec-delta** → a focused bootstrap is injected into the existing
-    interview session and mode flips back to `interview` so the user
-    answers only the slots that need changing; clicking Start Build
-    triggers a delta-aware council rerun.
-  - **structural** → a narrator note suggests starting a fresh run.
-  - New module: `src/ultraapp/feedback-classifier.ts`,
-    `src/ultraapp/patcher.ts`, `src/ultraapp/spec-delta.ts`,
-    `src/ultraapp/versions.ts`, `src/ultraapp/diff-apply.ts` (wraps the
-    `diff` npm package).
-- New manager methods: `submitDoneModeMessage`, `promoteVersion`,
-  `injectSystemMessage`, `setModeForDelta`.
-- New HTTP routes: `POST /ultraapp/<id>/feedback`,
-  `POST /ultraapp/<id>/promote-version` (body: `{ "version": "vN" }`).
-- New runtime dep: `diff` (BSD-2; for the patcher's unified-diff applier).
-
-### Deferred from v0.5 (user follow-up)
-
-- Dashboard done-mode UI (input mode-switch, classifier announce-and-confirm
-  card with countdown, Versions panel with `[Promote]` buttons) — backend
-  fully wired; the frontend can call the new routes directly. UI polish is
-  intentionally deferred to keep this round focused on load-bearing logic.
-- Spec-delta's automatic council rerun + v2 codebase snapshot — for v0.5
-  the user clicks Start Build manually after the focused interview
-  completes. Wiring that into the existing build queue is straightforward
-  but needs a manual end-to-end test pass that requires real LLM access.
-- **ultraapp v0.4** — narrator. During build mode, a per-run Claude Haiku
-  session subscribes to the build event stream, batches events (every 6
-  events or 15 s of activity, whichever first; `build-complete` /
-  `build-failed` / `build-cancelled` flush immediately), and writes short
-  conversational chat updates ("agent-A is iterating; agent-B voted NO
-  citing missing error handling on the file uploader") instead of v0.2's
-  raw event lines. Falls back to one raw line per event if the narrator
-  LLM is unavailable. Language is auto-detected from prior interview
-  chat — Chinese in, Chinese out.
-- **ultraapp v0.3** — deploy + reverse-proxy router. After `build-complete`,
-  the manager auto-runs `docker build` + `docker run -d --restart
-  unless-stopped` on a dynamic port in `[19100, 19999]` and registers the
-  app's slug with a Node-only reverse proxy at `localhost:19000/forge/<slug>/`
-  (with fallback to the next free port if 19000 is taken). After health-check
-  passes, the chat surfaces a share card with copy / open / Make Public…
-  actions; the modal lists copy-pastable Cloudflare Tunnel / ngrok / Tailscale
-  Funnel / Caddy snippets so users can expose the app on their own terms.
-  Sidebar items grow Start / Stop / Delete buttons (delete removes container
-  + image + on-disk artifacts). The router persists its slug map to
-  `_router.json` and reloads on next boot, so containers survive
-  claw-orchestrator restarts (Docker `--restart unless-stopped`).
-- New HTTP routes: `POST /ultraapp/<id>/start`, `POST /ultraapp/<id>/stop`,
-  `POST /ultraapp/<id>/delete`.
-- `RunMode` widened with `'deploying'`; full `'done'` is now reachable.
-- Artifact metadata extended with `deploy: { url, port, containerName,
-  imageTag }` and `deployedAt`.
-- **ultraapp v0.2** — `[Start Build]` is wired to a real pipeline. The Forge
-  tab now drives the AppSpec through a 3-agent council super-task (uses the
-  existing `Council` class with three Claude Opus agents in fresh git
-  worktrees of a per-run project dir). On consensus the council snapshot is
-  copied into `versions/v1/codebase/` and a purpose-built fix-on-failure
-  helper runs `npm install && npm run build && npm test && docker build .`,
-  spawning a Claude session to fix mechanical failures and retrying up to
-  five rounds. Builds run through a global serial queue with FIFO position
-  reporting. The mode pill in the chat sidebar advances `interview → queued
-  → building → build-complete | failed` live via SSE. Deploy + reverse-proxy
-  routing arrive in v0.3.
-- New HTTP routes: `POST /ultraapp/<id>/build`,
-  `POST /ultraapp/<id>/build/cancel`, `POST /ultraapp/<id>/artifacts`.
-- `RunMode` widened to `interview | queued | building | build-complete | done
-  | failed | cancelled`.
-- **ultraapp v0.1** — new dashboard tab + tool family. Structured Q&A interview
-  engine drives a Claude Opus session through a slot-driven AppSpec interview;
-  runs persist to `~/.claw-orchestrator/ultraapps/`. Forge tab in the dashboard
-  hosts the chat (with structured option chips and `[Submit]`), a live-updating
-  AppSpec sidebar, drag-drop file ingestion (or pasted absolute paths under
-  `$HOME` / `/tmp` only), and inline JSON-textarea spec editing. Build/deploy
-  flows arrive in v0.2 / v0.3.
-- New read-only MCP tools: `ultraapp_list`, `ultraapp_get`, `ultraapp_status`.
-- New HTTP routes under `/ultraapp/*` (list, new, get, answer, spec-edit, files,
-  events SSE).
+- `UA_DEBUG_TURNS=<dir>` env var: when set, `driveTurn` writes every
+  turn's raw `(in, out)` pair to `<dir>/<runId>.turns.jsonl`. Off by
+  default; production behavior unchanged. Used by trace-capture scripts
+  to reconstruct full trace JSONL (incl. tool calls, which never appear
+  in `chat.jsonl`).
 
 ## [3.7.1] - 2026-05-11
 
