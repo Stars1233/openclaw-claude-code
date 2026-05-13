@@ -99,4 +99,28 @@ describe('plugin tool registration', () => {
     expect(routePaths.has('/v1/claw-orchestrator-proxy')).toBe(true);
     expect(routePaths.has('/v1/claude-code-proxy')).toBe(true);
   });
+
+  it('registers the full ultraapp MCP tool surface (read + write)', () => {
+    const ULTRAAPP_TOOLS = [
+      // read
+      'ultraapp_list',
+      'ultraapp_get',
+      'ultraapp_status',
+      // write
+      'ultraapp_new',
+      'ultraapp_answer',
+      'ultraapp_add_file',
+      'ultraapp_spec_edit',
+      'ultraapp_build_start',
+      'ultraapp_build_cancel',
+      'ultraapp_feedback',
+      'ultraapp_promote_version',
+      'ultraapp_start_container',
+      'ultraapp_stop_container',
+      'ultraapp_delete',
+    ];
+    for (const name of ULTRAAPP_TOOLS) {
+      expect(byName.has(name), `missing ultraapp tool: ${name}`).toBe(true);
+    }
+  });
 });
