@@ -529,6 +529,63 @@ export class EmbeddedServer {
         return;
       }
 
+      // ─── Council — launch new (dashboard "+ New" button) ────────
+      //
+      // Minimal contract: { task, projectDir, maxRounds? }. Dashboard form
+      // uses a 3-agent Claude Opus preset (planner / implementer / critic);
+      // power users who want custom personas can call the `council_start`
+      // plugin tool through OpenClaw instead.
+      if (path === '/council/new') {
+        const task = (body as { task?: string }).task;
+        const projectDir = (body as { projectDir?: string }).projectDir;
+        if (typeof task !== 'string' || !task.trim()) {
+          json(400, { ok: false, error: 'task (string) required' });
+          return;
+        }
+        if (typeof projectDir !== 'string' || !projectDir.trim()) {
+          json(400, { ok: false, error: 'projectDir (string) required' });
+          return;
+        }
+        const safeProjectDir = sanitizeCwd(projectDir);
+        if (!safeProjectDir) {
+          json(400, { ok: false, error: 'projectDir failed sanitization' });
+          return;
+        }
+        const session = this.manager.councilStart(task, {
+          projectDir: safeProjectDir,
+          agents: [
+            {
+              name: 'agent-A',
+              emoji: '🔵',
+              persona:
+                'You are agent A, a careful planner. Lay out the approach and architecture before changing code.',
+              engine: 'claude',
+              model: 'claude-opus-4-7',
+            },
+            {
+              name: 'agent-B',
+              emoji: '🟠',
+              persona:
+                'You are agent B, a pragmatic implementer. Make the change small, focused, and review-ready.',
+              engine: 'claude',
+              model: 'claude-opus-4-7',
+            },
+            {
+              name: 'agent-C',
+              emoji: '🟢',
+              persona:
+                'You are agent C, a critical reviewer. Block consensus until the quality bar is met — be specific about what is missing.',
+              engine: 'claude',
+              model: 'claude-opus-4-7',
+            },
+          ],
+          maxRounds: (body as { maxRounds?: number }).maxRounds ?? 15,
+          defaultPermissionMode: 'bypassPermissions',
+        });
+        json(200, { ok: true, id: session.id, status: session.status });
+        return;
+      }
+
       const councilStateMatch = path.match(/^\/council\/([^/]+)\/state$/);
       if (councilStateMatch) {
         const session = this.manager.councilStatus(councilStateMatch[1]);

@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { SessionManager } from '../session-manager.js';
 import { EmbeddedServer } from '../embedded-server.js';
+import type { CouncilSession } from '../types.js';
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -44,5 +45,67 @@ describe('token file write-order', () => {
     await s1.stop();
     await mgr1.shutdown();
     await mgr2.shutdown();
+  });
+});
+
+describe('POST /council/new', () => {
+  let manager: SessionManager;
+  let server: EmbeddedServer;
+  let port: number;
+  let token: string;
+
+  beforeAll(async () => {
+    manager = new SessionManager({});
+    // councilStart spawns real Claude subprocesses — stub it for the unit test.
+    vi.spyOn(manager, 'councilStart').mockImplementation(
+      (task: string): CouncilSession => ({
+        id: 'fake-council-id-001',
+        task,
+        status: 'running',
+        startTime: '2026-05-13T05:00:00.000Z',
+        responses: [],
+        config: { agents: [], maxRounds: 0, projectDir: '/tmp' },
+      }),
+    );
+    const ephemeral = await freePort();
+    server = new EmbeddedServer(manager, ephemeral);
+    port = await server.start();
+    token = fs.readFileSync(path.join(os.homedir(), '.openclaw', 'server-token'), 'utf-8').trim();
+  });
+  afterAll(async () => {
+    await server.stop();
+    await manager.shutdown();
+  });
+
+  it('starts a council and returns its id', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/council/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ task: 'test task', projectDir: '/tmp' }),
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { ok: boolean; id: string; status: string };
+    expect(j.ok).toBe(true);
+    expect(j.id).toBe('fake-council-id-001');
+    expect(j.status).toBe('running');
+    expect(manager.councilStart).toHaveBeenCalledOnce();
+  });
+
+  it('returns 400 when task is missing', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/council/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ projectDir: '/tmp' }),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('returns 400 when projectDir is missing', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/council/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ task: 'just a task' }),
+    });
+    expect(r.status).toBe(400);
   });
 });
