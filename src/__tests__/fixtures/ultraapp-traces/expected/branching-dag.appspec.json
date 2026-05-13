@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "slide-deck-generator",
+    "title": "Slide Deck Generator",
+    "description": "Turn a video into a markdown slide deck by pairing ffmpeg keyframes with overlapping Whisper transcript chunks."
+  },
+  "inputs": [
+    {
+      "name": "video",
+      "type": "file",
+      "accept": [
+        "video/*",
+        ".mp4",
+        ".mov",
+        ".mkv",
+        ".webm"
+      ],
+      "required": true,
+      "description": "Source video — audio will be transcribed, keyframes sampled.",
+      "maxSizeMB": 1500,
+      "maxDurationSec": 1800
+    },
+    {
+      "name": "interval_sec",
+      "type": "enum",
+      "choices": [
+        10,
+        30,
+        60,
+        120
+      ],
+      "default": 30,
+      "required": true,
+      "description": "Seconds between keyframes. Lower = more slides, higher = denser per-slide text."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "deck_zip",
+      "type": "file",
+      "format": "zip",
+      "description": "ZIP containing deck.md (slide deck) + images/ folder (keyframe JPGs referenced by the markdown)."
+    },
+    {
+      "name": "deck",
+      "type": "file",
+      "description": "Markdown slide deck. Each slide = one keyframe image + the transcript chunk overlapping its timestamp."
+    }
+  ],
+  "pipeline": {
+    "steps": [
+      {
+        "id": "transcribe",
+        "description": "Transcribe audio with Whisper, producing timestamped segments.",
+        "inputs": [
+          "video"
+        ],
+        "outputs": [
+          "transcript_json"
+        ],
+        "hints": {
+          "tools": [
+            "whisper"
+          ],
+          "reference": "from faster_whisper import WhisperModel\nmodel = WhisperModel('large-v3', device='auto', compute_type='auto')\nsegments, info = model.transcribe(video_path, word_timestamps=True)"
+        },
+        "validates": {
+          "outputType": "json"
+        },
+        "parallel_group": "A"
+      },
+      {
+        "id": "keyframes",
+        "description": "Sample one keyframe every 30 seconds with ffmpeg.",
+        "inputs": [
+          "video",
+          "interval_sec"
+        ],
+        "outputs": [
+          "keyframe_images"
+        ],
+        "hints": {
+          "tools": [
+            "ffmpeg"
+          ],
+          "reference": "ffmpeg -i <video> -vf fps=1/<interval_sec> keyframe_%04d.jpg"
+        },
+        "validates": {
+          "outputType": "image-gallery"
+        },
+        "parallel_group": "A"
+      },
+      {
+        "id": "merge",
+        "description": "For each keyframe at time t, find the transcript segment(s) overlapping t, and emit a markdown slide pairing image + text.",
+        "inputs": [
+          "transcript_json",
+          "keyframe_images"
+        ],
+        "outputs": [
+          "deck_zip"
+        ],
+        "hints": {
+          "tools": [
+            "python"
+          ],
+          "reference": "for kf in keyframes:\n    t = kf.timestamp\n    chunk = next(s for s in segments if s.start <= t <= s.end)\n    write(f'![]({kf.path})\\n\\n{chunk.text}\\n\\n---\\n')",
+          "reference_v2": "import zipfile, os\nwith zipfile.ZipFile('deck.zip','w') as z:\n    z.write('deck.md')\n    for img in keyframes: z.write(img, f'images/{os.path.basename(img)}')"
+        },
+        "validates": {
+          "outputType": "file"
+        },
+        "depends_on": [
+          "transcribe",
+          "keyframes"
+        ]
+      }
+    ]
+  },
+  "runtime": {
+    "needsLLM": false,
+    "llmProviders": [],
+    "binaryDeps": [
+      "ffmpeg",
+      "python3"
+    ],
+    "estimatedRuntimeSec": 360,
+    "estimatedFileSizeMB": 1500,
+    "whisperBackend": "faster-whisper-local",
+    "whisperModel": "large-v3",
+    "needsGPU": true
+  },
+  "ui": {
+    "layout": "single-form",
+    "showProgress": true
+  }
+}

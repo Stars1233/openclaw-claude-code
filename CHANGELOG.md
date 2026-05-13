@@ -5,6 +5,151 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-05-13
+
+### Added — ultraapp (Forge tab)
+
+A new dashboard tab and a 14-tool MCP surface that turns a structured Q&A
+interview into a deployed web app reachable at `localhost:19000/forge/<slug>/`,
+with a post-deploy feedback loop and a reference-trace regression harness.
+
+Roughly: open Forge → answer 5–8 questions (each with a recommended option) →
+click Start Build → council writes a complete codebase, fix-on-failure drives
+`npm install && npm run build && npm test && docker build .` to green, deploy
+registers the slug → share-card URL appears in chat. Iterate via chat:
+"make button green" → cosmetic patcher; "also output a thumbnail" →
+spec-delta focused interview + auto-rerun. Versions tagged `v1`, `v2`, ...
+and switchable via Promote.
+
+#### Pipeline
+
+- **Interview engine** (`src/ultraapp/interview-parser.ts`,
+  `src/ultraapp/interview-tools.ts`): structured Q&A envelopes with
+  recommended option, free-form fallback, contextual citations.
+  `update_spec` (RFC 6902 JSON Patch), `extract_metadata` (file probe /
+  ffprobe), `check_completeness` tool calls. Mid-reply tool-call + question
+  bundling supported.
+- **Council super-task** (`src/ultraapp/council-adapter.ts`): three Claude
+  Opus agents in fresh git worktrees of a per-run project dir reach
+  consensus by 3-way YES vote (uses the existing `Council` class).
+- **Fix-on-failure helper** (`src/ultraapp/fix-on-failure.ts`): purpose-
+  built ~50-line loop that drives `npm install / build / test / docker
+  build` and spawns a Claude Opus fixer session on red, up to N rounds.
+  Replaces the original autoloop adapter (different problem shape).
+- **Build queue** (`src/ultraapp/build.ts`): global serial FIFO with 11
+  `BuildEvent` variants and live position reporting.
+- **Deploy + reverse-proxy router** (`src/ultraapp/deploy.ts`,
+  `src/ultraapp/router.ts`, `src/ultraapp/lifecycle.ts`,
+  `src/ultraapp/host-strategy.ts`, `src/ultraapp/docker.ts`): two
+  runtime modes — `host` (default) spawns the generated app as a
+  regular Node process (zero extra deps; works anywhere Node works),
+  `docker` (opt-in via `clawo serve --ultraapp-runtime docker`) uses
+  `docker build` + `docker run -d --restart unless-stopped` for shared-
+  host isolation. Both allocate a dynamic port in `[19100, 19999]`.
+  Node-only reverse proxy at port 19000 (with port-fallback) maps
+  `/forge/<slug>/*` to backends; slug map persists to `_router.json`
+  for survival across orchestrator restarts. Host-mode pid metadata
+  persists to `~/.claw-orchestrator/host-procs.json` so start/stop
+  survive orchestrator restarts the same way.
+- **Narrator** (`src/ultraapp/narrator.ts`): per-run Claude Haiku session
+  batches build events (every 6 / 15s / urgent) and writes short
+  conversational chat updates instead of raw event lines. Language
+  auto-detected (Chinese / English) from prior interview chat. Falls
+  back to raw lines if Haiku is unavailable.
+- **Done-mode feedback loop** (`src/ultraapp/feedback-classifier.ts`,
+  `src/ultraapp/patcher.ts`, `src/ultraapp/spec-delta.ts`,
+  `src/ultraapp/versions.ts`, `src/ultraapp/diff-apply.ts`): post-deploy
+  chat is classified by Haiku into cosmetic / spec-delta / structural and
+  routed: cosmetic → Opus patcher (unified diff + apply + validate +
+  auto-revert + version snapshot); spec-delta → focused interview
+  bootstrap + auto-rerun on completion; structural → suggest fresh run.
+  Versions snapshot to `versions/vN/` and swap atomically via the router.
+
+#### Surface
+
+- **MCP tools (14):** `ultraapp_list`, `ultraapp_get`, `ultraapp_status`,
+  `ultraapp_new`, `ultraapp_answer`, `ultraapp_add_file`,
+  `ultraapp_spec_edit`, `ultraapp_build_start`, `ultraapp_build_cancel`,
+  `ultraapp_feedback`, `ultraapp_promote_version`,
+  `ultraapp_start_container`, `ultraapp_stop_container`, `ultraapp_delete`.
+  All declared in `openclaw.plugin.json`.
+- **HTTP routes:** `/ultraapp/{list, new, <id>, <id>/answer,
+  <id>/spec-edit, <id>/files, <id>/events (SSE), <id>/build,
+  <id>/build/cancel, <id>/artifacts, <id>/start, <id>/stop, <id>/delete,
+  <id>/feedback, <id>/promote-version}`.
+- **Dashboard:** Forge tab with three-column layout (chat / spec / files).
+  Mode pill (interview → queued → building → build-complete | deploying →
+  done | failed). Chat input mode-aware: in interview mode submits to
+  `/answer`; in done mode submits to `/feedback`. Versions panel in the
+  AppSpec column with per-version Promote button. Sidebar lifecycle
+  buttons (start / stop / delete). `Make Public…` modal with
+  Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+
+#### Reference traces
+
+5 JSONL traces of real interviews (text-summariser, image-batch-resize,
+vlog-cut, llm-agent-pipeline, branching-dag) under
+`src/__tests__/fixtures/ultraapp-traces/`. Each pairs with a frozen
+`expected/<name>.appspec.json` snapshot. The
+`spec-extraction-quality.test.ts` test replays each trace through the
+interview engine and asserts the resulting AppSpec matches — any future
+engine or skill drift fails this test loudly. Manual smoke runner at
+`test-ultraapp-integration.ts`.
+
+#### Skill
+
+- **`skills/ultraapp/SKILL.md`** — interview behavioural contract +
+  question-envelope schema + tool-call contract + ending criteria. Refined
+  based on real-trace findings: tool-call + question in the same reply
+  is the encouraged pattern; stop-early guidance to avoid over-asking
+  (typical complete spec lands in 5–8 questions).
+
+#### Runtime dep
+
+- New: `diff` (BSD-2; powers the patcher's unified-diff applier).
+
+### Fixed
+
+- **Interview parser tools+question dropping** (`interview-parser.ts`):
+  when Claude returned `<tool name=...>` calls AND a fenced \`\`\`question
+  block in a single reply, the parser used to return kind `'tools'` and
+  silently drop the question. The follow-up tool_result driveTurn would
+  get a free-text reply ("Waiting on the X question above.") and the
+  interview would stall. Now returns a `'tools-and-question'` kind; the
+  manager runs the tools, surfaces the question to the user immediately,
+  and fires the tool_result follow-up in the background.
+- **Spec validator over-strictness** (`spec.ts`, `store.ts`,
+  `manager.ts`): `validateAppSpec` ran on every `writeSpec`, meaning
+  every intermediate `update_spec` patch had to pass full cross-ref +
+  DAG checks. But Claude builds the spec incrementally; transient
+  invalid states (a step refs an undeclared input) are normal mid-
+  interview but were rejected, leaving Claude to retry-loop and punt the
+  pipeline (`spec.pipeline.steps` stayed `[]` for non-trivial captures).
+  Split into `validateAppSpecShape` (lax: version + runId + name regex;
+  called from `writeSpec`) and `validateAppSpec` (strict: shape +
+  cross-refs + DAG; called from `startBuild` before enqueueing). Build
+  no longer starts on an invalid spec.
+- **PID-file cross-process safety** (`session-manager.ts`): the host-
+  shared `~/.openclaw/session-pids.json` had no notion of which
+  SessionManager process owned each entry. Two consequences: (1) every
+  `_savePids` call overwrote the file, erasing other live managers'
+  entries; (2) every `_cleanupOrphanedPids` constructor pass would kill
+  any pid in the file whose process was alive AND looked like a coding
+  CLI. Result: starting a fresh SessionManager (e.g., for a smoke test)
+  killed the children of the existing gateway SessionManager. Now each
+  entry is tagged with `{ pid, ownerPid, since }`; saves do read-merge-
+  write keyed by ownerPid; cleanup skips entries whose ownerPid points
+  to a live process. Legacy bare-number entries are conservatively
+  skipped (no kill) and dropped on the next save.
+
+### Added — debug tooling
+
+- `UA_DEBUG_TURNS=<dir>` env var: when set, `driveTurn` writes every
+  turn's raw `(in, out)` pair to `<dir>/<runId>.turns.jsonl`. Off by
+  default; production behavior unchanged. Used by trace-capture scripts
+  to reconstruct full trace JSONL (incl. tool calls, which never appear
+  in `chat.jsonl`).
+
 ## [3.7.1] - 2026-05-11
 
 ### Fixed

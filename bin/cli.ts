@@ -78,9 +78,17 @@ program
   .description('Start standalone embedded server (for use without OpenClaw)')
   .option('-p, --port <port>', 'Port', '18796')
   .option('-H, --host <host>', 'Bind address (default: 127.0.0.1, use 0.0.0.0 for remote access)')
+  .option(
+    '--ultraapp-runtime <mode>',
+    "ultraapp runtime mode: 'host' (default; spawns Node directly, no Docker) or 'docker' (uses docker build/run for isolation)",
+    'host',
+  )
   .action(async (opts) => {
     const { SessionManager } = await import('../src/session-manager.js');
     const { EmbeddedServer } = await import('../src/embedded-server.js');
+    const { UltraappRouter } = await import('../src/ultraapp/router.js');
+    const { defaultStoreRoot } = await import('../src/ultraapp/store.js');
+    const path = await import('node:path');
     // Serve mode targets long-running multi-caller setups (OpenAI-compat
     // bridge for OpenClaw main agent + cron + subagents + webchat). Default
     // bumps over the in-plugin defaults are intentional:
@@ -94,21 +102,41 @@ program
       maxConcurrentSessions: maxSessions,
       sessionTtlMinutes: ttlMinutes,
     });
+
+    // ultraapp runtime mode (host = default, docker = opt-in for isolation)
+    const runtimeMode: 'host' | 'docker' = opts.ultraappRuntime === 'docker' ? 'docker' : 'host';
+    manager.setUltraappRuntimeMode(runtimeMode);
+    console.log(`[ultraapp] runtime mode: ${runtimeMode}`);
+
+    // Boot the ultraapp reverse-proxy router on port 19000 (with fallbacks).
+    // Best-effort — failure here doesn't block serve mode; ultraapp builds
+    // will simply rest at build-complete instead of progressing to deploy.
+    const router = new UltraappRouter({
+      port: 19000,
+      mapPath: path.join(defaultStoreRoot(), '_router.json'),
+    });
+    let routerStartedPort: number | null = null;
+    try {
+      routerStartedPort = await router.start();
+      manager.setUltraappRouter(router);
+      console.log(`[ultraapp] router on http://127.0.0.1:${routerStartedPort}/forge/<slug>/`);
+    } catch (err) {
+      console.warn(`[ultraapp] router failed to start: ${(err as Error).message} — deploys will be skipped`);
+    }
+
     const server = new EmbeddedServer(manager, parseInt(opts.port), opts.host);
     const port = await server.start();
     if (port) {
       console.log(`Standalone server running on http://127.0.0.1:${port}`);
       console.log('Press Ctrl+C to stop');
-      process.on('SIGINT', async () => {
+      const shutdown = async () => {
         await server.stop();
+        if (routerStartedPort !== null) await router.stop().catch(() => {});
         await manager.shutdown();
         process.exit(0);
-      });
-      process.on('SIGTERM', async () => {
-        await server.stop();
-        await manager.shutdown();
-        process.exit(0);
-      });
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     }
   });
 

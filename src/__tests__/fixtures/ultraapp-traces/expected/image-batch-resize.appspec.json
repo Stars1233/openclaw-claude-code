@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "image-batch-watermark",
+    "title": "图片批量缩放 + 水印",
+    "description": "上传一组图片和一张水印图，按指定目标宽度等比缩放每张图片并在右下角叠加水印，打包成 zip 下载。"
+  },
+  "inputs": [
+    {
+      "name": "images",
+      "type": "files",
+      "accept": "image/jpeg,image/png,image/webp",
+      "required": true,
+      "description": "待处理的图片批量"
+    },
+    {
+      "name": "watermark",
+      "type": "file",
+      "accept": "image/png",
+      "required": true,
+      "description": "水印图（推荐 PNG 带透明通道）"
+    },
+    {
+      "name": "target_width",
+      "type": "number",
+      "required": true,
+      "description": "目标宽度（像素）。高度按原图比例计算。"
+    },
+    {
+      "name": "watermark_scale_percent",
+      "type": "number",
+      "required": false,
+      "default": 15,
+      "min": 1,
+      "max": 100,
+      "description": "水印宽度占缩放后图片宽度的百分比（默认 15%）"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "processed_zip",
+      "type": "file",
+      "description": "包含所有处理后图片的 zip 包"
+    }
+  ],
+  "pipeline": {
+    "steps": [
+      {
+        "id": "resize",
+        "description": "对每张输入图按 target_width 等比缩放",
+        "inputs": [
+          "images",
+          "target_width"
+        ],
+        "outputs": [
+          "resized_images"
+        ],
+        "hints": {
+          "tool": "Pillow (PIL.Image.thumbnail / resize with LANCZOS)"
+        },
+        "validates": {
+          "outputType": "files"
+        }
+      },
+      {
+        "id": "watermark",
+        "description": "把水印按 watermark_scale_percent% × 缩放后图片宽度 等比缩放，再粘贴到右下角",
+        "inputs": [
+          "resized_images",
+          "watermark",
+          "watermark_scale_percent"
+        ],
+        "outputs": [
+          "watermarked_images"
+        ],
+        "hints": {
+          "tool": "Pillow (Image.paste with alpha mask)",
+          "notes": "padding = max(round(resized_width * 0.02), 4) 像素；水印按原 alpha 通道贴；如果水印不是 RGBA，先转 RGBA"
+        },
+        "validates": {
+          "outputType": "files"
+        }
+      },
+      {
+        "id": "package",
+        "description": "把所有处理后的图片打成 zip，保持每张图原始格式（JPEG/PNG/WebP）和原文件名",
+        "inputs": [
+          "watermarked_images"
+        ],
+        "outputs": [
+          "processed_zip"
+        ],
+        "hints": {
+          "tool": "Python stdlib zipfile",
+          "notes": "JPEG 用 quality=95 保存以避免二次压缩明显劣化；PNG/WebP 无损保存"
+        },
+        "validates": {
+          "outputType": "file"
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "needsLLM": false,
+    "binaryDeps": [
+      "python3",
+      "Pillow>=10.0"
+    ],
+    "estimatedRuntimeSec": 30,
+    "estimatedFileSizeMB": 100,
+    "notes": "运行时与图片数量、分辨率线性相关。Pillow LANCZOS 缩放 + alpha 粘贴在 CPU 上单线程足够；批量大时可加 multiprocessing。"
+  },
+  "ui": {
+    "layout": "single-form",
+    "showProgress": true,
+    "accentColor": "#2563eb",
+    "notes": "处理可能耗时几十秒，进度条/状态提示必须有，避免用户以为卡死"
+  }
+}

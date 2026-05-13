@@ -1251,6 +1251,255 @@ const plugin = {
         return { ok: true };
       },
     });
+
+    // ─── ultraapp (read-only) ─────────────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultraapp_list',
+      description:
+        'List all ultraapp runs (interview/build/done) with title, mode, and timestamps. Read-only — to start a new run, open the Forge dashboard tab.',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => {
+        const ua = getManager().getUltraappManager();
+        const runs = await ua.store.listRuns();
+        return { ok: true, runs };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_get',
+      description: 'Get the AppSpec, chat history, and state for one ultraapp run. Pass `runId` from ultraapp_list.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const runId = args.runId as string;
+        const [spec, chat, state] = await Promise.all([
+          ua.store.readSpec(runId),
+          ua.store.readChat(runId),
+          ua.store.readState(runId),
+        ]);
+        return { ok: true, spec, chat, state };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_status',
+      description: 'Get the run state (mode, failure reason if any) for one ultraapp run. Cheap; no chat or spec data.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const state = await ua.store.readState(args.runId as string);
+        return { ok: true, ...state };
+      },
+    });
+
+    // ─── ultraapp (write) ─────────────────────────────────────────────────
+
+    api.registerTool({
+      name: 'ultraapp_new',
+      description:
+        'Start a new ultraapp run. Spawns the interview Claude Opus session; the first question lands on the SSE stream / next ultraapp_get call. Returns the runId.',
+      parameters: { type: 'object', properties: {} },
+      execute: async () => {
+        const ua = getManager().getUltraappManager();
+        const runId = await ua.createRun();
+        return { ok: true, runId };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_answer',
+      description:
+        'Submit an answer to the current interview question. Either pick `value` (one of the option values from the latest question) or pass `freeform` text — both can be used together for "selected X with caveat".',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          value: { type: 'string', description: 'Selected option value (empty string for freeform-only)' },
+          freeform: { type: 'string', description: 'Optional free-form text answer' },
+        },
+        required: ['runId', 'value'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        await ua.submitAnswer(args.runId as string, {
+          value: args.value as string,
+          freeform: args.freeform as string | undefined,
+        });
+        return { ok: true };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_add_file',
+      description:
+        'Reference a local example file by absolute path (under $HOME or /tmp; symlinks and dotfiles rejected). Use this to attach reference inputs the interview can extract metadata from. For binary uploads from a browser, use the dashboard.',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          absolutePath: { type: 'string', description: 'Absolute path under $HOME or /tmp' },
+        },
+        required: ['runId', 'absolutePath'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const r = await ua.addFile(args.runId as string, {
+          kind: 'path',
+          absolutePath: args.absolutePath as string,
+        });
+        return { ok: true, ...r };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_spec_edit',
+      description:
+        'Manually edit the AppSpec via a JSON Patch (RFC 6902). Use sparingly — the interview engine produces and updates the spec automatically. Useful to correct a slot before clicking build.',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          patch: {
+            type: 'array',
+            description: 'RFC 6902 patch operations',
+            items: { type: 'object' },
+          },
+        },
+        required: ['runId', 'patch'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        await ua.applySpecEdit(args.runId as string, args.patch as never);
+        return { ok: true };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_build_start',
+      description:
+        'Enqueue a build for the run. Builds run serially. Watch ultraapp_status for transitions: queued → building → build-complete (or → deploying → done if a router is wired).',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        await ua.startBuild(args.runId as string);
+        return { ok: true };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_build_cancel',
+      description:
+        'Cancel a queued or in-flight build. Best-effort for in-flight; the worker is expected to honour its own cancellation signal (v0.2 only emits the event).',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        ua.cancelBuild(args.runId as string);
+        return { ok: true };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_feedback',
+      description:
+        'Submit a done-mode feedback message (after the run reaches `done`). The text is classified by Haiku into cosmetic / spec-delta / structural and routed: cosmetic runs the patcher (Opus diff + validate + auto-revert + version snapshot); spec-delta flips the run back to `interview` with a focused bootstrap; structural posts a "start fresh" suggestion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          text: { type: 'string', description: 'The user feedback (1+ chars)' },
+        },
+        required: ['runId', 'text'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        await ua.submitDoneModeMessage(args.runId as string, args.text as string);
+        return { ok: true };
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_promote_version',
+      description:
+        "Atomically swap which previously-built version is currently deployed. Stops the old container, starts the target version's container, updates the router map. Requires a router to be wired (see clawo serve).",
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          version: { type: 'string', description: 'Target version like "v1", "v2"' },
+        },
+        required: ['runId', 'version'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const r = await ua.promoteVersion(args.runId as string, args.version as string);
+        return r;
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_start_container',
+      description:
+        'Start the deployed container for a run (e.g., after `ultraapp_stop_container` or after orchestrator restart with a stopped container). Re-registers the slug on the router.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const r = await ua.startContainer(args.runId as string);
+        return r;
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_stop_container',
+      description:
+        'Stop the deployed container and deregister the slug from the router. URL returns 404 until ultraapp_start_container.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const r = await ua.stopContainer(args.runId as string);
+        return r;
+      },
+    });
+
+    api.registerTool({
+      name: 'ultraapp_delete',
+      description:
+        'Delete a run completely: stops the container, removes the image, deregisters the slug, and removes the on-disk run dir at ~/.claw-orchestrator/ultraapps/<runId>/. Irreversible.',
+      parameters: {
+        type: 'object',
+        properties: { runId: { type: 'string' } },
+        required: ['runId'],
+      },
+      execute: async (_id, args) => {
+        const ua = getManager().getUltraappManager();
+        const r = await ua.deleteRun(args.runId as string);
+        return r;
+      },
+    });
   },
 };
 
