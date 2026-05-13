@@ -14,6 +14,15 @@ export interface ToolCall {
 export type ParsedReply =
   | { kind: 'question'; question: QuestionEnvelope; rawText: string }
   | { kind: 'complete'; summary: string }
+  | {
+      /** Tool calls AND a question in the same reply. The manager runs the
+          tools, sends the tool_result followup (background), and emits the
+          question to the user without waiting for another LLM round-trip. */
+      kind: 'tools-and-question';
+      toolCalls: ToolCall[];
+      question: QuestionEnvelope;
+      rawText: string;
+    }
   | { kind: 'tools'; toolCalls: ToolCall[]; rawText: string }
   | { kind: 'text'; text: string }
   | { kind: 'error'; reason: string };
@@ -29,6 +38,26 @@ export function parseInterviewReply(reply: string): ParsedReply {
   while ((m = TOOL_RE.exec(reply)) !== null) {
     tools.push({ name: m[1], argsRaw: m[2].trim() });
   }
+
+  // Try to also parse a fenced question — it's common (and previously
+  // dropped silently) for Claude to emit tool calls AND the next question
+  // in a single reply.
+  const parsedQuestion = (() => {
+    const fence = FENCE_RE.exec(reply);
+    if (!fence) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fence[1]);
+    } catch {
+      return null;
+    }
+    const v = validateQuestion(parsed);
+    return v.ok ? v.value : null;
+  })();
+
+  if (tools.length > 0 && parsedQuestion) {
+    return { kind: 'tools-and-question', toolCalls: tools, question: parsedQuestion, rawText: reply };
+  }
   if (tools.length > 0) {
     return { kind: 'tools', toolCalls: tools, rawText: reply };
   }
@@ -37,20 +66,20 @@ export function parseInterviewReply(reply: string): ParsedReply {
     return { kind: 'complete', summary: reply.replace(COMPLETE_RE, '').trim() };
   }
 
+  if (parsedQuestion) {
+    return { kind: 'question', question: parsedQuestion, rawText: reply };
+  }
+
+  // Re-run the parse to surface a malformed-fence error if a fence was present
+  // but its JSON was bad.
   const fence = FENCE_RE.exec(reply);
   if (fence) {
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(fence[1]);
+      JSON.parse(fence[1]);
+      return { kind: 'error', reason: 'invalid question envelope' };
     } catch (e) {
-      return {
-        kind: 'error',
-        reason: `malformed JSON in question fence: ${(e as Error).message}`,
-      };
+      return { kind: 'error', reason: `malformed JSON in question fence: ${(e as Error).message}` };
     }
-    const v = validateQuestion(parsed);
-    if (v.ok) return { kind: 'question', question: v.value, rawText: reply };
-    return { kind: 'error', reason: v.reason };
   }
 
   return { kind: 'text', text: reply.trim() };

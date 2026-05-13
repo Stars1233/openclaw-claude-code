@@ -533,9 +533,25 @@ export class UltraappManager {
   private async driveTurn(run: ActiveRun, message: string): Promise<void> {
     try {
       const { output } = await this.opts.sessionManager.sendMessage(run.sessionName, message);
+      // Debug capture for trace authoring: when UA_DEBUG_TURNS=<dir> is set,
+      // append every turn's (in, out) pair to <dir>/<runId>.turns.jsonl. No
+      // effect when unset. Used by scripts/ua-capture-trace.mjs to rebuild a
+      // replayable JSONL trace from a real interview run.
+      const debugDir = process.env.UA_DEBUG_TURNS;
+      if (debugDir) {
+        try {
+          fs.mkdirSync(debugDir, { recursive: true });
+          fs.appendFileSync(
+            path.join(debugDir, `${run.runId}.turns.jsonl`),
+            JSON.stringify({ ts: new Date().toISOString(), in: message, out: output }) + '\n',
+          );
+        } catch {
+          /* best-effort */
+        }
+      }
       const parsed = parseInterviewReply(output);
 
-      if (parsed.kind === 'tools') {
+      if (parsed.kind === 'tools' || parsed.kind === 'tools-and-question') {
         const results = await runToolCalls({
           runId: run.runId,
           store: this.opts.store,
@@ -550,6 +566,21 @@ export class UltraappManager {
               `<tool_result name="${r.name}">${r.ok ? JSON.stringify(r.result) : `ERROR: ${r.error}`}</tool_result>`,
           )
           .join('\n');
+        if (parsed.kind === 'tools-and-question') {
+          // Claude already wrote the next question; surface it to the user
+          // immediately. Send the tool_result followup in the background so
+          // the LLM sees the tool succeeded — but we don't block the user
+          // on its reply (it's typically a "thanks, continuing" no-op).
+          await this.opts.store.appendChat(run.runId, {
+            role: 'assistant',
+            kind: 'question',
+            text: parsed.question.question,
+            payload: { ...parsed.question },
+          });
+          this.emit(run, { type: 'question', question: parsed.question });
+          void this.driveTurn(run, followup);
+          return;
+        }
         void this.driveTurn(run, followup);
         return;
       }

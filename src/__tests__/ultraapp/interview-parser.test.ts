@@ -52,4 +52,28 @@ describe('parseInterviewReply', () => {
     expect(r.toolCalls[0].name).toBe('update_spec');
     expect(r.toolCalls[0].argsRaw).toContain('vlog');
   });
+
+  it('returns tools-and-question when both appear in the same reply', () => {
+    const reply = `Got it.
+
+<tool name="update_spec">[{"op":"add","path":"/meta/name","value":"vlog"}]</tool>
+
+Next question:
+
+\`\`\`question
+{
+  "question": "input file?",
+  "options": [{"label":"video","value":"video"}],
+  "recommended": "video",
+  "freeformAccepted": false
+}
+\`\`\``;
+    const r = parseInterviewReply(reply);
+    expect(r.kind).toBe('tools-and-question');
+    if (r.kind !== 'tools-and-question') throw new Error();
+    expect(r.toolCalls.length).toBe(1);
+    expect(r.toolCalls[0].name).toBe('update_spec');
+    expect(r.question.question).toBe('input file?');
+    expect(r.question.recommended).toBe('video');
+  });
 });
