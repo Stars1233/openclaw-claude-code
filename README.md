@@ -153,6 +153,20 @@ const result = await manager.sendMessage("task", "Fix the failing tests");
 clawo council start "Refactor the API layer and add tests"
 ```
 
+### Quick Start: ultraapp
+
+Turn a structured Q&A interview into a deployed web app:
+
+1. `clawo serve` (boots the dashboard at `:18796` and the ultraapp router at `:19000`)
+2. Open `http://127.0.0.1:18796/dashboard?token=$(cat ~/.openclaw/server-token)` and pick the **Forge** tab
+3. Click **+ New** and walk the interview (≈ 5–8 questions; each has a recommended option — Submit it unless you disagree)
+4. Click **Start Build**. Council writes a complete codebase; fix-on-failure drives `npm install && npm run build && npm test && docker build .` to green; deploy registers the slug with the router.
+5. The share card appears in chat with the live URL: `http://127.0.0.1:19000/forge/<slug>/`. Hit it from a browser to use your app.
+6. Iterate via chat: type "make button green" → cosmetic patch (Opus diff + validate + version snapshot); type "also output a thumbnail" → spec-delta focused interview + auto-rerun. Promote any version from the AppSpec column.
+7. Want to share? Click **Make Public…** for copy-pasteable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+
+Driveable headlessly via the same HTTP routes the dashboard uses (`/ultraapp/new` → `/answer` → `/build` → `/feedback`) — see `skills/ultraapp/SKILL.md` for the interview contract and `src/__tests__/fixtures/ultraapp-traces/_format.md` for the JSONL trace format. Every operation is also exposed as an MCP tool (`ultraapp_new`, `ultraapp_answer`, `ultraapp_build_start`, `ultraapp_feedback`, `ultraapp_promote_version`, etc.) so any MCP host can drive ultraapp end-to-end.
+
 ### As an OpenClaw plugin
 
 If you run OpenClaw, Claw Orchestrator installs as a managed plugin. The same tools (`session_start`, `team_send`, `council_start`, ...) become available to every OpenClaw agent.
