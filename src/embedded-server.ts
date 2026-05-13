@@ -87,11 +87,11 @@ export class EmbeddedServer {
       );
     } else if (envToken) {
       this.authToken = envToken;
-      this._writeTokenFile(this.authToken);
     } else {
       this.authToken = crypto.randomBytes(32).toString('hex');
-      this._writeTokenFile(this.authToken);
     }
+    // Note: the file write is deferred to the listen()-success callback below,
+    // so a loser-of-EADDRINUSE race doesn't clobber the winner's token file.
 
     this._rateLimitCleanupTimer = setInterval(() => {
       const now = Date.now();
@@ -118,7 +118,10 @@ export class EmbeddedServer {
       });
 
       this.server.listen(this.port, this.host, () => {
+        // Bound successfully — NOW persist the token. A second instance that
+        // loses EADDRINUSE never reaches this callback and leaves the file alone.
         if (this.authToken) {
+          this._writeTokenFile(this.authToken);
           console.log(`[embedded-server] Listening on http://${this.host}:${this.port} (auth enabled)`);
           console.log(`[embedded-server] Token file: ${path.join(os.homedir(), '.openclaw', 'server-token')}`);
           console.log(
@@ -190,7 +193,7 @@ export class EmbeddedServer {
           JSON.stringify({
             ok: false,
             error: 'Unauthorized',
-            hint: 'Send Authorization: Bearer <token> (token at ~/.openclaw/server-token), or visit /dashboard?token=<token> in a browser to set the cookie.',
+            hint: 'Send Authorization: Bearer <token> (token at ~/.openclaw/server-token), or visit /login?token=<token>&redirect=/dashboard in a browser to set the cookie via redirect (so the token does not appear in the bookmark URL).',
           }),
         );
         return;
@@ -454,13 +457,39 @@ export class EmbeddedServer {
         return;
       }
 
+      // ─── Login redirect ─────────────────────────────────────────
+      //
+      // First-visit pattern for hosted access (e.g., clawd.enderfga.cn):
+      // visit /login?token=<T>&redirect=<path>, which the auth gate above has
+      // already validated. Server sets the auth cookie and 302s to redirect,
+      // so the bookmark URL never contains the token (no referrer / CF log /
+      // browser-history leak). The redirect target is restricted to same-
+      // origin (must start with '/') to prevent open-redirect abuse.
+
+      if (path === '/login') {
+        // Auth gate above already passed (queryOk set the cookie via Set-Cookie),
+        // so reaching here means the token is valid.
+        const raw = query.get('redirect') || '/dashboard';
+        // Same-origin only: must start with '/', not '//', and contain no scheme.
+        const safe = /^\/(?!\/)/.test(raw) && !/^\/[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : '/dashboard';
+        res.writeHead(302, { Location: safe });
+        res.end();
+        return;
+      }
+
       // ─── Dashboard (single static HTML) ─────────────────────────
       //
       // Serves src/dashboard/index.html (or dist/src/dashboard/index.html in
       // a built install). Walks up like resolveConfigPath does so it works
       // both during dev (tsx) and from the published package.
 
-      if (path === '/dashboard' || path === '/dashboard/' || path === '/dashboard/index.html') {
+      if (
+        path === '/dashboard' ||
+        path === '/dashboard/' ||
+        path === '/dashboard/index.html' ||
+        path === '/dash' ||
+        path === '/dash/'
+      ) {
         const fsMod = await import('node:fs');
         const pathMod = await import('node:path');
         const urlMod = await import('node:url');
