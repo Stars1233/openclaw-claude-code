@@ -156,19 +156,15 @@ clawo council start "Refactor the API layer and add tests"
 ### Quick Start: dashboard
 
 Run `clawo serve` (or set up `com.clawo.serve` under launchd — see
-`skills/references/dashboard.md`) and visit the dashboard once with the
-auth-cookie redirect:
+`skills/references/dashboard.md`) and visit the dashboard:
 
 ```sh
 clawo serve            # one-shot, foreground
 # or for an always-on background service, see skills/references/dashboard.md
-T=$(cat ~/.openclaw/server-token)
-open "http://127.0.0.1:18796/login?token=$T&redirect=/dash"
+open "http://127.0.0.1:18796/dash?token=$(cat ~/.openclaw/server-token)"
 ```
 
-`/login` validates the token, sets the `clawo_auth` cookie, and 302s to
-`/dash`. Bookmark `/dash` directly — the token never appears in the
-bookmark URL. The page has three tabs:
+The page has three tabs:
 
 - **Autoloop** — click **+ New** to start an autoloop run in any
   workspace; the loop runs `Planner ↔ Coder ↔ Reviewer` until the goal

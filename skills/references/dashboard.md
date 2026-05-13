@@ -66,17 +66,42 @@ launchctl print "gui/$(id -u)/com.clawo.serve" | grep state
 ## Auth
 
 The embedded server self-generates a 32-byte token at startup and writes it
-to `~/.openclaw/server-token` (mode 0600). For browser access the standard
-pattern is a one-time `/login` redirect:
+to `~/.openclaw/server-token` (mode 0600). Same-user processes on the box
+read it and present it as `Authorization: Bearer <token>` (or
+`?token=<v>` query / `clawo_auth` cookie).
+
+### Local access
 
 ```
-https://<your-host>/login?token=<token-value>&redirect=/dash
+http://127.0.0.1:18796/dash?token=$(cat ~/.openclaw/server-token)
 ```
 
-The server validates the token, sets an `HttpOnly clawo_auth` cookie, and
-302s to `/dash`. Subsequent visits authenticate by cookie — bookmark
-`/dash` directly. The token never appears in the bookmark URL or referrer
-headers.
+The server sets a `clawo_auth` cookie on the first query-token request, so
+the bookmark `/dash` works on subsequent visits.
+
+### Hosted access via reverse proxy (recommended)
+
+Don't expose the token to the public internet. Instead, gate the public
+hostname with whatever auth layer you already trust (CF Access passkey,
+Tailscale, mTLS, etc.) and have the reverse proxy **inject the Bearer
+token on behalf of the user** when forwarding to port 18796. The browser
+authenticates only against your edge auth; the dashboard's own token stays
+inside the box.
+
+Example sasha-doctor pattern (matches the user-side setup):
+```js
+// after the edge auth check passes:
+if (!req.headers.authorization) {
+  req.headers.authorization =
+    "Bearer " + fs.readFileSync("~/.openclaw/server-token", "utf-8").trim();
+}
+proxyHTTP(req, res, 18796);
+```
+
+The `/login?token=...&redirect=/dash` endpoint exists as a fallback for
+quick one-shot setups (works locally and through proxies that DON'T inject
+the Bearer for you), but the proxy-injects-Bearer pattern is preferred
+because users never see or paste the token.
 
 Token-file write is deferred to the `listen()`-success callback so a second
 process that loses the EADDRINUSE race does NOT clobber the winner's token.
