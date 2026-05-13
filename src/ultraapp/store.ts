@@ -4,6 +4,20 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { type AppSpec, makeEmptySpec, validateAppSpecShape } from './spec.js';
 
+/**
+ * Atomic write: render to `<file>.tmp.<pid>.<rand>`, then rename(2) onto the
+ * target. POSIX rename is atomic, so concurrent readers either see the old
+ * file or the new — never the partial write that `fsp.writeFile`'s
+ * truncate-then-stream sequence exposes. The mid-poll-loop "Expected ',' or
+ * '}' after property value" JSON errors that hit the manager-test in CI
+ * came from exactly that window.
+ */
+async function atomicWriteJson(file: string, body: string): Promise<void> {
+  const tmp = `${file}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  await fsp.writeFile(tmp, body);
+  await fsp.rename(tmp, file);
+}
+
 export type RunMode =
   | 'interview'
   | 'queued'
@@ -63,9 +77,9 @@ export class UltraappStore {
     await fsp.mkdir(path.join(dir, 'examples'), { recursive: true });
     const now = new Date().toISOString();
     const state: RunState = { runId: id, mode: 'interview', createdAt: now, updatedAt: now };
-    await fsp.writeFile(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
+    await atomicWriteJson(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
     const spec = makeEmptySpec(id);
-    await fsp.writeFile(path.join(dir, 'spec.json'), JSON.stringify(spec, null, 2));
+    await atomicWriteJson(path.join(dir, 'spec.json'), JSON.stringify(spec, null, 2));
     return id;
   }
 
@@ -107,7 +121,7 @@ export class UltraappStore {
     state.mode = mode;
     state.updatedAt = new Date().toISOString();
     if (failure !== undefined) state.failure = failure;
-    await fsp.writeFile(path.join(this.runDir(runId), 'state.json'), JSON.stringify(state, null, 2));
+    await atomicWriteJson(path.join(this.runDir(runId), 'state.json'), JSON.stringify(state, null, 2));
   }
 
   async readSpec(runId: string): Promise<AppSpec> {
@@ -122,12 +136,12 @@ export class UltraappStore {
     // invalid states (e.g., a step refs an input not yet declared) are normal.
     validateAppSpecShape(spec);
     const dir = this.runDir(runId);
-    await fsp.writeFile(path.join(dir, 'spec.json'), JSON.stringify(spec, null, 2));
+    await atomicWriteJson(path.join(dir, 'spec.json'), JSON.stringify(spec, null, 2));
     const entry: SpecHistoryEntry = { ts: spec.updatedAt, source, spec };
     await fsp.appendFile(path.join(dir, 'spec.history.jsonl'), JSON.stringify(entry) + '\n');
     const state = await this.readState(runId);
     state.updatedAt = spec.updatedAt;
-    await fsp.writeFile(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
+    await atomicWriteJson(path.join(dir, 'state.json'), JSON.stringify(state, null, 2));
   }
 
   async readSpecHistory(runId: string): Promise<SpecHistoryEntry[]> {
@@ -186,7 +200,7 @@ export class UltraappStore {
   async recordBuildArtifact(runId: string, args: { worktreePath: string; version: string }): Promise<void> {
     const dir = path.join(this.versionsDir(runId), args.version);
     await fsp.mkdir(dir, { recursive: true });
-    await fsp.writeFile(
+    await atomicWriteJson(
       path.join(dir, 'artifact.json'),
       JSON.stringify({ worktreePath: args.worktreePath, builtAt: new Date().toISOString() }, null, 2),
     );
@@ -240,7 +254,7 @@ export class UltraappStore {
     const cur = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
     cur.deploy = deploy;
     cur.deployedAt = new Date().toISOString();
-    await fsp.writeFile(file, JSON.stringify(cur, null, 2));
+    await atomicWriteJson(file, JSON.stringify(cur, null, 2));
   }
 
   async deleteRunFiles(runId: string): Promise<void> {

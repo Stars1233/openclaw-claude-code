@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.6] - 2026-05-13
+
+### Fixed — `UltraappStore` JSON files now written atomically
+
+`UltraappStore.setMode` / `writeSpec` / `recordBuildArtifact` /
+`recordDeploy` / `createRun` all used `fsp.writeFile`, whose
+truncate-then-stream sequence leaves a window where a concurrent reader
+sees a partial file. The manager test's polling loop tripped on this in
+CI (`Expected ',' or '}' after property value in JSON at position 148`
+inside `readState`); the race exists in production too — any code that
+polls run state while another path mutates it can read the partial
+write.
+
+Added `atomicWriteJson(file, body)` that writes to
+`<file>.tmp.<pid>.<rand>` and `rename(2)`s onto the target. POSIX
+rename is atomic, so concurrent readers see the old file or the new
+one, never the gap. All seven writer sites in `store.ts` route through
+the helper.
+
 ## [4.0.5] - 2026-05-13
 
 ### Fixed — Coder / Reviewer panes were blank after refresh
