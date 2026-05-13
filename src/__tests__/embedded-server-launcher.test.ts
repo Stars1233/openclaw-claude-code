@@ -1,14 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import * as net from 'node:net';
 import * as path from 'node:path';
 import { SessionManager } from '../session-manager.js';
 import { EmbeddedServer } from '../embedded-server.js';
 
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const port = (srv.address() as net.AddressInfo).port;
+      srv.close(() => resolve(port));
+    });
+    srv.on('error', reject);
+  });
+}
+
 describe('token file write-order', () => {
   it('does NOT overwrite ~/.openclaw/server-token when bind fails (EADDRINUSE)', async () => {
     const mgr1 = new SessionManager({});
-    const s1 = new EmbeddedServer(mgr1, 0);
+    // EmbeddedServer treats `0 || DEFAULT_SERVER_PORT` as DEFAULT, not ephemeral,
+    // so we explicitly grab a free port to keep this test isolated from any
+    // standalone clawo-serve that may be running on the default port.
+    const ephemeral = await freePort();
+    const s1 = new EmbeddedServer(mgr1, ephemeral);
     const port = await s1.start();
     expect(port).toBeGreaterThan(0);
 

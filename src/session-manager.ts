@@ -201,6 +201,61 @@ interface SendOptions {
   onChunk?: (chunk: string) => void;
 }
 
+// ─── Disk enumeration (cross-process visibility) ────────────────────────────
+//
+// When the dashboard's standalone clawo-serve and the OpenClaw plugin run as
+// separate processes, each has its own in-memory map of active runs. To make
+// past runs visible across processes we read what's persisted on disk:
+//   - Council: transcripts at ~/.openclaw/council-logs/council-*.md
+//   - Autoloop: registry at ~/.claw-orchestrator/autoloop-registry.jsonl
+
+const DEFAULT_COUNCIL_LOG_DIR = path.join(os.homedir(), '.openclaw', 'council-logs');
+
+/** Public shape returned by listCouncilsFromDisk(). Mirrors a subset of CouncilSession. */
+export interface CouncilDiskRecord {
+  id: string;
+  task: string;
+  status: string;
+  startTime: string;
+}
+
+/**
+ * Enumerate council sessions from on-disk transcripts. Called by
+ * SessionManager.councilList() to surface runs that the current process didn't
+ * spawn itself (e.g. runs started in another process whose transcripts have
+ * already been flushed to ~/.openclaw/council-logs/).
+ *
+ * Format parsed (matches src/council.ts saveTranscript):
+ *   - **ID**: <session.id>
+ *   - **Time**: <iso>
+ *   - **Task**: <text>
+ *   - **Status**: <consensus|max_rounds|...>
+ *
+ * Legacy transcripts written before the ID field was added fall back to a
+ * filename-derived id (basename without .md). That's stable across reruns
+ * even if uncomfortable as a display id.
+ */
+export function listCouncilsFromDisk(logDir = DEFAULT_COUNCIL_LOG_DIR): CouncilDiskRecord[] {
+  if (!fs.existsSync(logDir)) return [];
+  const out: CouncilDiskRecord[] = [];
+  for (const entry of fs.readdirSync(logDir)) {
+    if (!entry.startsWith('council-') || !entry.endsWith('.md')) continue;
+    let head: string;
+    try {
+      head = fs.readFileSync(path.join(logDir, entry), 'utf-8').slice(0, 2000);
+    } catch {
+      continue;
+    }
+    const id =
+      /^-\s+\*\*ID\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || entry.replace(/\.md$/, '');
+    const task = /^-\s+\*\*Task\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || '(no task recorded)';
+    const startTime = /^-\s+\*\*Time\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || '';
+    const status = /^-\s+\*\*Status\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || 'unknown';
+    out.push({ id, task, status, startTime });
+  }
+  return out;
+}
+
 // ─── SessionManager ──────────────────────────────────────────────────────────
 
 export class SessionManager {
@@ -1459,11 +1514,37 @@ export class SessionManager {
     return council?.getSession();
   }
 
-  /** List all council sessions known to this manager (running, terminal, awaiting-user). */
+  /**
+   * List all council sessions visible to this process.
+   *
+   * Includes (a) in-memory sessions managed by this SessionManager and (b)
+   * sessions reconstructed from on-disk transcripts at ~/.openclaw/council-logs/.
+   * The disk path lets the dashboard see runs started in OTHER processes
+   * (e.g. plugin-managed runs visible to a standalone clawo-serve dashboard).
+   * Dedup by id; in-memory wins. Sorted by startTime descending so the newest
+   * appears at the top of the sidebar.
+   */
   councilList(): CouncilSession[] {
-    return Array.from(this.councils.values())
+    const inMemory = Array.from(this.councils.values())
       .map((c) => c.getSession())
       .filter((s): s is CouncilSession => s !== null && s !== undefined);
+    const inMemIds = new Set(inMemory.map((s) => s.id));
+    const fromDisk: CouncilSession[] = listCouncilsFromDisk()
+      .filter((r) => !inMemIds.has(r.id))
+      .map(
+        (r) =>
+          ({
+            id: r.id,
+            task: r.task,
+            status: r.status as CouncilSession['status'],
+            startTime: r.startTime,
+            responses: [],
+            config: { agents: [], maxRounds: 0, projectDir: '' },
+          }) as CouncilSession,
+      );
+    return [...inMemory, ...fromDisk].sort((a, b) =>
+      (b.startTime || '').localeCompare(a.startTime || ''),
+    );
   }
 
   /** Used by embedded-server to subscribe to a council's event stream. */

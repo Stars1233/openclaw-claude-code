@@ -743,6 +743,7 @@ export class Council extends EventEmitter {
     const filepath = path.join(logDir, `council-${ts}.md`);
 
     let content = `# Council Transcript\n\n`;
+    content += `- **ID**: ${session.id}\n`;
     content += `- **Time**: ${session.startTime}\n`;
     content += `- **Task**: ${session.task}\n`;
     content += `- **Status**: ${session.status}\n\n---\n\n`;
