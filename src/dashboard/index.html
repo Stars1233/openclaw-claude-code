@@ -948,6 +948,9 @@
                     <span>iter ${r.iter}</span>
                     <span>↑${r.push_log_count}</span>
                   </div>
+                  <div class="lifecycle-actions">
+                    <button data-act="delete">Delete</button>
+                  </div>
                 </li>`;
             } else if (state.tab === 'council') {
               return `
@@ -993,6 +996,30 @@
               ev.stopPropagation();
               const action = btn.dataset.act;
               const id = el.dataset.id;
+              if (state.tab === 'autoloop') {
+                if (action !== 'delete') return;
+                if (!confirm(`Delete autoloop run "${id}"? The registry entry is removed; the ledger directory under tasks/${id}/ is kept on disk.`)) return;
+                try {
+                  const r = await fetch(`/autoloop/${encodeURIComponent(id)}/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+                  if (!r.ok) {
+                    let detail = `HTTP ${r.status}`;
+                    try { const j = await r.json(); if (j && j.error) detail = j.error; } catch { /* ignore */ }
+                    alert(`Delete failed: ${detail}`);
+                    return;
+                  }
+                  // If we were viewing this run, close the detail pane and pick another.
+                  if (state.selectedId === id) {
+                    closeStreams();
+                    state.selectedId = null;
+                    $('main').innerHTML = '<div class="empty">Select a run from the left.</div>';
+                  }
+                } catch (err) {
+                  alert(`Delete failed: ${(err && err.message) || err}`);
+                  return;
+                }
+                refreshList();
+                return;
+              }
               if (action === 'delete' && !confirm('Delete this run? Container, image, and on-disk artifacts are removed.')) return;
               await forgeLifecycleAction(id, action);
               refreshList();
@@ -1483,7 +1510,19 @@
         });
         es.addEventListener('planner_reply', (e) => {
           const { text } = JSON.parse(e.data);
+          // Clear the "waiting…" placeholder, if any, before appending the reply.
+          state.autoloop.plannerLog = state.autoloop.plannerLog.filter((m) => m.who !== 'pending');
           state.autoloop.plannerLog.push({ who: 'planner', text, ts: new Date().toISOString() });
+          paintPlanner();
+        });
+        es.addEventListener('planner_error', (e) => {
+          const { message } = JSON.parse(e.data);
+          state.autoloop.plannerLog = state.autoloop.plannerLog.filter((m) => m.who !== 'pending');
+          state.autoloop.plannerLog.push({
+            who: 'system',
+            text: `[planner error] ${message}`,
+            ts: new Date().toISOString(),
+          });
           paintPlanner();
         });
         es.addEventListener('coder_reply', (e) => {
@@ -1634,16 +1673,47 @@
         const btn = $('auto-send');
         btn.disabled = true;
         ta.disabled = true;
+        // Clear input optimistically — the message is already echoed in the
+        // planner log below, and the new server contract is fire-and-forget
+        // (returns 202 immediately; reply streams via SSE). If the POST fails
+        // synchronously we surface the error in the log.
+        ta.value = '';
         state.autoloop.plannerLog.push({ who: 'user', text, ts: new Date().toISOString() });
+        state.autoloop.plannerLog.push({
+          who: 'pending',
+          text: 'Planner is thinking…',
+          ts: new Date().toISOString(),
+        });
         paintPlanner();
         try {
-          await fetch('/v1/openclaw/tools/autoloop_chat', {
+          const r = await fetch(`/autoloop/${encodeURIComponent(id)}/chat`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ run_id: id, text }),
+            body: JSON.stringify({ text }),
           });
-          ta.value = '';
+          // Server returns 202 on accepted (queued); 200 is also fine for
+          // legacy clients. Anything else is a real failure.
+          if (!r.ok) {
+            let detail = `HTTP ${r.status}`;
+            try {
+              const j = await r.json();
+              if (j && typeof j.error === 'string') detail = j.error;
+            } catch {
+              /* non-JSON body — keep the status code */
+            }
+            state.autoloop.plannerLog = state.autoloop.plannerLog.filter((m) => m.who !== 'pending');
+            state.autoloop.plannerLog.push({
+              who: 'system',
+              text: `[error] ${detail}`,
+              ts: new Date().toISOString(),
+            });
+            paintPlanner();
+          }
+          // On success, do nothing — the planner_reply / planner_error SSE
+          // handler upstairs clears the "thinking…" placeholder when the
+          // Planner actually replies (or errors).
         } catch (err) {
+          state.autoloop.plannerLog = state.autoloop.plannerLog.filter((m) => m.who !== 'pending');
           state.autoloop.plannerLog.push({
             who: 'system',
             text: `[error] ${(err && err.message) || 'send failed'}`,

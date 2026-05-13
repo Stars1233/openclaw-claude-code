@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { listCouncilsFromDisk, listAutoloopsFromRegistry, appendAutoloopRegistry } from '../session-manager.js';
+import {
+  listCouncilsFromDisk,
+  listAutoloopsFromRegistry,
+  appendAutoloopRegistry,
+  removeAutoloopFromRegistry,
+} from '../session-manager.js';
 
 describe('listCouncilsFromDisk', () => {
   let tmpDir: string;
@@ -154,5 +159,72 @@ describe('autoloop registry', () => {
     );
     const rows = listAutoloopsFromRegistry(file);
     expect(rows.map((r) => r.run_id)).toEqual(['good']);
+  });
+});
+
+describe('removeAutoloopFromRegistry', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autoloop-reg-rm-'));
+  });
+  afterEach(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  it('drops every line whose run_id matches and keeps the rest', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'ws'), { recursive: true });
+    const ledger = path.join(tmpDir, 'ws');
+    appendAutoloopRegistry(file, {
+      run_id: 'keep-1',
+      workspace: 'a',
+      ledger_dir: ledger,
+      started_at: 't',
+      planner_session: 'p',
+    });
+    appendAutoloopRegistry(file, {
+      run_id: 'drop-me',
+      workspace: 'b',
+      ledger_dir: ledger,
+      started_at: 't',
+      planner_session: 'p',
+    });
+    appendAutoloopRegistry(file, {
+      run_id: 'keep-2',
+      workspace: 'c',
+      ledger_dir: ledger,
+      started_at: 't',
+      planner_session: 'p',
+    });
+    appendAutoloopRegistry(file, {
+      run_id: 'drop-me',
+      workspace: 'b2',
+      ledger_dir: ledger,
+      started_at: 't',
+      planner_session: 'p',
+    });
+
+    const removed = removeAutoloopFromRegistry(file, 'drop-me');
+    expect(removed).toBe(2);
+
+    const rows = listAutoloopsFromRegistry(file);
+    expect(rows.map((r) => r.run_id).sort()).toEqual(['keep-1', 'keep-2']);
+  });
+
+  it('returns 0 and leaves the file untouched when run_id is absent', () => {
+    const file = path.join(tmpDir, 'autoloop-registry.jsonl');
+    fs.mkdirSync(path.join(tmpDir, 'ws'), { recursive: true });
+    appendAutoloopRegistry(file, {
+      run_id: 'only',
+      workspace: 'a',
+      ledger_dir: path.join(tmpDir, 'ws'),
+      started_at: 't',
+      planner_session: 'p',
+    });
+    const before = fs.readFileSync(file, 'utf-8');
+    expect(removeAutoloopFromRegistry(file, 'nope')).toBe(0);
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+  });
+
+  it('returns 0 when the registry file does not exist (idempotent)', () => {
+    expect(removeAutoloopFromRegistry(path.join(tmpDir, 'missing.jsonl'), 'whatever')).toBe(0);
   });
 });

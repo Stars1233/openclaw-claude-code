@@ -52,6 +52,25 @@ export class EmbeddedServer {
     return recent.length <= this._rateLimit;
   }
 
+  /**
+   * Try to reuse the token persisted by a previous server. Returns null if
+   * the file is absent, unreadable, the wrong shape, or the wrong perms.
+   * We accept any 32+ hex-char string (the format crypto.randomBytes(32)
+   * produces) — anything else is treated as garbage and rotated out.
+   */
+  private _readPersistedToken(): string | null {
+    const tokenPath = path.join(os.homedir(), '.openclaw', 'server-token');
+    try {
+      const raw = fs.readFileSync(tokenPath, 'utf-8').trim();
+      // 64 hex chars from crypto.randomBytes(32).toString('hex'). Accept
+      // ≥32 to be lenient with env-token-style strings copied into the file.
+      if (/^[0-9a-fA-F]{32,256}$/.test(raw)) return raw;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   private _writeTokenFile(token: string): void {
     const tokenDir = path.join(os.homedir(), '.openclaw');
     try {
@@ -88,7 +107,14 @@ export class EmbeddedServer {
     } else if (envToken) {
       this.authToken = envToken;
     } else {
-      this.authToken = crypto.randomBytes(32).toString('hex');
+      // Reuse the existing on-disk token if one is present and well-formed.
+      // Without this, every `clawo serve` restart rotates the token and
+      // invalidates the browser cookie / CLI session — users had to re-login
+      // to the dashboard after each restart. The token file is mode 0600
+      // (owner-read-only), so reuse on a single-user host has the same
+      // threat model as the freshly-generated token.
+      const persisted = this._readPersistedToken();
+      this.authToken = persisted ?? crypto.randomBytes(32).toString('hex');
     }
     // Note: the file write is deferred to the listen()-success callback below,
     // so a loser-of-EADDRINUSE race doesn't clobber the winner's token file.
@@ -140,14 +166,13 @@ export class EmbeddedServer {
       clearInterval(this._rateLimitCleanupTimer);
       this._rateLimitCleanupTimer = null;
     }
-    // Only delete token file if it matches our token
-    try {
-      const tokenPath = path.join(os.homedir(), '.openclaw', 'server-token');
-      const stored = fs.readFileSync(tokenPath, 'utf8');
-      if (stored === this.authToken) fs.unlinkSync(tokenPath);
-    } catch {
-      /* ignore */
-    }
+    // NOTE: we intentionally do NOT delete the token file on stop. Keeping
+    // it lets the next server invocation reuse the same token (see
+    // _readPersistedToken), which means browser cookies / open dashboard
+    // tabs / CLI sessions survive a `clawo serve` restart. The file is
+    // mode 0600 so it does not widen the threat surface while the server
+    // is down. If you need to rotate the token, delete the file manually
+    // or set OPENCLAW_SERVER_TOKEN explicitly.
     if (!this.server) return;
     return new Promise((resolve) => {
       this.server!.close(() => resolve());
@@ -749,6 +774,8 @@ export class EmbeddedServer {
           cleanup();
         };
         const onPlannerReply = (text: unknown): void => send('planner_reply', { text });
+        const onPlannerError = (err: unknown): void =>
+          send('planner_error', { message: err instanceof Error ? err.message : String(err) });
         const onCoderReply = (text: unknown): void => send('coder_reply', { text });
         const onReviewerReply = (text: unknown): void => send('reviewer_reply', { text });
         const onCompact = (e: unknown): void => send('compact', e);
@@ -759,6 +786,7 @@ export class EmbeddedServer {
           ctx.runner.off('iter_done', onIterDone);
           ctx.runner.off('terminated', onTerm);
           ctx.dispatcher.off('planner_reply', onPlannerReply);
+          ctx.dispatcher.off('planner_error', onPlannerError);
           ctx.dispatcher.off('coder_reply', onCoderReply);
           ctx.dispatcher.off('reviewer_reply', onReviewerReply);
           ctx.dispatcher.off('compact', onCompact);
@@ -774,10 +802,68 @@ export class EmbeddedServer {
         ctx.runner.on('iter_done', onIterDone);
         ctx.runner.on('terminated', onTerm);
         ctx.dispatcher.on('planner_reply', onPlannerReply);
+        ctx.dispatcher.on('planner_error', onPlannerError);
         ctx.dispatcher.on('coder_reply', onCoderReply);
         ctx.dispatcher.on('reviewer_reply', onReviewerReply);
         ctx.dispatcher.on('compact', onCompact);
         res.on('close', cleanup);
+        return;
+      }
+
+      // ─── Autoloop — chat into the Planner ─────────────────────
+      //
+      // POST /autoloop/<run_id>/chat  { text }  →  202 { ok, queued: true }
+      //
+      // Fire-and-forget. The Planner's reply streams back as a planner_reply
+      // event on /autoloop/<id>/events (SSE). We DO NOT await it on this
+      // request because first-contact replies routinely exceed the
+      // Cloudflare Tunnel origin idle limit (~100s, returns 524). The MCP
+      // `autoloop_chat` tool path keeps the await-and-return-reply
+      // semantics — it runs in-process, not through Cloudflare.
+      const v2ChatMatch = path.match(/^\/autoloop\/([^/]+)\/chat$/);
+      if (v2ChatMatch) {
+        const id = v2ChatMatch[1];
+        const text = (body as { text?: string }).text;
+        if (typeof text !== 'string' || !text.trim()) {
+          json(400, { ok: false, error: 'text (non-empty string) required' });
+          return;
+        }
+        // Validate run exists synchronously so 404 surfaces cleanly. After
+        // this point we hand the message off to the runner and return.
+        if (!this.manager.getAutoloop(id)) {
+          json(404, { ok: false, error: `Autoloop run '${id}' not found` });
+          return;
+        }
+        this.manager.autoloopChat(id, text).catch((err) => {
+          // Late failures (planner errors, runner shutdown mid-dispatch) flow
+          // to SSE as planner_error events; this catch only exists to keep
+          // unhandled rejection from crashing the server.
+          console.warn(`[autoloop/${id}] chat dispatch failed: ${(err as Error).message}`);
+        });
+        json(202, { ok: true, queued: true });
+        return;
+      }
+
+      // ─── Autoloop — delete a run from the registry ────────────
+      //
+      // POST /autoloop/<run_id>/delete
+      //
+      // Stops the runner if still alive in this process, then scrubs the
+      // row from ~/.claw-orchestrator/autoloop-registry.jsonl. Ledger files
+      // under <workspace>/tasks/<run_id>/ are kept on disk for postmortem.
+      const v2DeleteMatch = path.match(/^\/autoloop\/([^/]+)\/delete$/);
+      if (v2DeleteMatch) {
+        const id = v2DeleteMatch[1];
+        try {
+          const removed = await this.manager.autoloopDelete(id);
+          if (!removed) {
+            json(404, { ok: false, error: 'run not found' });
+          } else {
+            json(200, { ok: true });
+          }
+        } catch (err) {
+          json(500, { ok: false, error: (err as Error).message });
+        }
         return;
       }
 

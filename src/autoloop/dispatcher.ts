@@ -375,6 +375,14 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
       model: this.config.plannerModel ?? 'opus',
       permissionMode: 'bypassPermissions',
       systemPrompt: this.plannerSystemPrompt,
+      // Hard role boundary: Planner must NEVER author content files itself.
+      // Its only writes are plan.md / goal.json via the write_plan /
+      // write_goal autoloop tools. Disallowing the editing tools here is
+      // the load-bearing enforcement — prompt rules alone proved
+      // insufficient (the model would happily produce user-requested
+      // deliverables directly). Read/Glob/Grep/Bash stay enabled so
+      // Planner can still discover, audit, and `git status` the workspace.
+      disallowedTools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'],
     });
     this.plannerStarted = true;
   }
@@ -474,8 +482,14 @@ export class ClaudeAgentDispatcher extends EventEmitter implements AgentDispatch
           });
         }
       },
-      commitPlanFile: async (file, message) => {
-        await this.gitCommit(file, message ?? `autoloop: planner commits ${file}`);
+      writePlanFile: async (file, content, commitMessage) => {
+        // Author plan.md / goal.json on the Planner's behalf. The Planner
+        // can't Write/Edit directly (disallowedTools), so this autoloop tool
+        // is the single legitimate authoring path. Best-effort git commit
+        // keeps the ledger honest.
+        const target = path.join(this.config.workspace, file);
+        fs.writeFileSync(target, content);
+        await this.gitCommit(file, commitMessage ?? `autoloop: planner writes ${file}`);
       },
     };
     // After iter_done(N) the run has advanced to iter N+1 in runner state;

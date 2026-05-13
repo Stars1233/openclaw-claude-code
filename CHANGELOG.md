@@ -5,6 +5,140 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.3] - 2026-05-13
+
+### Fixed — Dashboard auth token survives `clawo serve` restarts
+
+`EmbeddedServer` regenerated the auth token from `crypto.randomBytes` on every
+construction, ignoring the on-disk `~/.openclaw/server-token`. Every server
+restart therefore invalidated the browser cookie / open dashboard tabs / any
+running CLI session — users had to re-login through `/login?token=…` after
+each restart. The server now reads the persisted token first (validated as
+≥32 hex chars), falling back to fresh generation only when the file is
+missing or malformed. The `OPENCLAW_SERVER_TOKEN` env override and the
+`disabled` opt-out still take precedence. The token file remains mode 0600.
+
+### Fixed — `session-pids.json` no longer accumulates stale entries
+
+`SessionManager._savePids()`'s read-merge-write logic unconditionally
+preserved entries from owners other than the current process, even after
+the owning `SessionManager` had exited. The actual child processes those
+entries tracked were already reaped by `_cleanupOrphanedPids()` at the
+next server start, so this was a bookkeeping leak rather than a process
+leak — but the file grew monotonically across restarts. `_savePids()` now
+probes `process.kill(ownerPid, 0)` before keeping an other-owner entry;
+dead-owner rows are dropped. An additional unit test
+(`session-manager-pidfile.test.ts`) locks down the new behaviour and the
+existing "merges instead of overwriting" test was updated to use
+`process.ppid` as a guaranteed-live other owner so it actually exercises
+the live-owner code path.
+
+### Changed — Planner is now physically prevented from authoring content files
+
+The Planner is meant to design plans and delegate; the Coder is meant to
+produce deliverables. In practice the Planner happily wrote LaTeX files /
+docs / code itself the moment a user asked, because:
+
+1. Its Claude Code session had the full Write/Edit/MultiEdit/NotebookEdit
+   palette enabled.
+2. The "don't author files" rule lived ~120 lines deep in the system
+   prompt, mixed with style notes — soft enough that direct user
+   instruction overrode it.
+3. The plan.md / goal.json authoring path used Write + a separate commit
+   tool, so the same Write tool that authored deliverables also authored
+   plans. No mechanical way to allow one and forbid the other.
+
+The fix moves the role boundary from soft (prompt rule) to hard
+(tool gating):
+
+- **Planner session now passes `disallowedTools: ['Write', 'Edit',
+  'MultiEdit', 'NotebookEdit']` to Claude Code.** Read / Glob / Grep /
+  Bash stay enabled so the Planner can still discover and audit the
+  workspace.
+- **New autoloop tools `write_plan` and `write_goal`** replace
+  `write_plan_committed` / `write_goal_committed`. They take the full
+  file `content` as a string + an optional `commit_message`. The
+  orchestrator writes the file server-side, then commits. This is the
+  Planner's **only** legitimate path to author plan.md / goal.json.
+  `write_goal` parses `content` as JSON before writing and errors back
+  to the Planner on parse failure.
+- **All three system prompts (Planner / Coder / Reviewer) rewritten** to
+  put hard rules at the top under an `# ABSOLUTE RULES` heading, with a
+  worked good/bad example for the Planner. Coder and Reviewer prompts
+  got the same structural treatment for self-consistency, though their
+  boundaries remain prompt-only (their roles need Write/Edit to function;
+  Reviewer's cwd-isolation continues to provide soft sandboxing).
+- `PlannerToolEffects.commitPlanFile` renamed to `writePlanFile(file,
+  content, commitMessage?)` — the new contract takes content.
+
+This is a behavioural breaking change for anyone driving the Planner with
+custom prompts that reference the old tool names; the orchestrator surfaces
+"unknown tool" warnings if it sees them.
+
+## [4.0.2] - 2026-05-13
+
+### Fixed — `POST /autoloop/<id>/chat` 524 timeout behind a reverse proxy
+
+4.0.1's chat route awaited the Planner's reply inline and returned it in the
+HTTP body. First-contact replies on a freshly-spawned Planner routinely take
+30–120s, which exceeds the Cloudflare Tunnel origin idle limit and surfaces as
+a 524 in the dashboard. The user's textarea also didn't clear because the
+fetch resolved into the error branch.
+
+- HTTP `POST /autoloop/<id>/chat` is now fire-and-forget: validates the run
+  is alive in memory, dispatches the message, returns **202** `{ ok, queued:
+  true }` immediately. The Planner's reply streams back via `/events` as a
+  `planner_reply` event — the dashboard already subscribes to it.
+- New `planner_error` SSE event so runtime failures inside the Planner
+  surface to the dashboard instead of hanging the "thinking…" indicator.
+- Dashboard clears the textarea on send, shows a `pending` "Planner is
+  thinking…" placeholder, and removes it when `planner_reply` or
+  `planner_error` arrives.
+- The MCP `autoloop_chat` tool path is unchanged — it still awaits and
+  returns the reply, since it runs in-process and isn't subject to
+  reverse-proxy idle limits.
+
+## [4.0.1] - 2026-05-13
+
+### Fixed — Autoloop chat in the dashboard
+
+The dashboard's Planner compose box posted to `/v1/openclaw/tools/autoloop_chat`,
+which only exists as an MCP tool in the OpenClaw plugin surface — not as an
+embedded-server HTTP route. The request 404'd silently (fetch resolves on 4xx
+without throwing), the input cleared, and the user saw their message disappear
+with no Planner reply.
+
+- Added `POST /autoloop/<id>/chat` to embedded-server, wired to
+  `SessionManager.autoloopChat()`. Returns `{ ok, reply }`; the reply also
+  streams through `/events` as a `planner_reply` SSE event.
+- Dashboard now hits the new route, checks `response.ok`, and renders
+  `[error] …` into the planner log on failure instead of swallowing it.
+- 400 on empty `text`, 404 when the run is unknown.
+
+### Added — Delete an autoloop run from the dashboard
+
+Failed or completed runs piled up in the sidebar with no way to remove them.
+
+- New `POST /autoloop/<id>/delete` endpoint and
+  `SessionManager.autoloopDelete()`. Stops the runner if alive, scrubs the
+  row from `~/.claw-orchestrator/autoloop-registry.jsonl`. The ledger
+  directory under `<workspace>/tasks/<run_id>/` is intentionally kept on
+  disk for postmortem inspection.
+- Dashboard run list shows a hover-revealed **Delete** button on each
+  autoloop row, with a confirmation prompt. After deletion the detail
+  pane resets to the empty state if the deleted run was open.
+- New helper `removeAutoloopFromRegistry(file, run_id)` exported from
+  `session-manager.ts`, with idempotent semantics and an atomic
+  write-temp-then-rename.
+
+### Tests
+
+- `disk-enum.test.ts`: three new cases covering the registry scrub
+  (multi-line drop, absent run_id, missing file).
+- `embedded-server-launcher.test.ts`: two new suites covering the new
+  chat (200 / 400 / 404) and delete (200 / 404) routes against a stubbed
+  manager.
+
 ## [4.0.0] - 2026-05-13
 
 ### Added — ultraapp (Forge tab)

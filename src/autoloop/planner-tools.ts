@@ -29,8 +29,8 @@ export type PlannerToolName =
   | 'resume_loop'
   | 'terminate'
   | 'update_push_policy'
-  | 'write_plan_committed'
-  | 'write_goal_committed';
+  | 'write_plan'
+  | 'write_goal';
 
 export interface PlannerToolCall {
   tool: PlannerToolName;
@@ -97,8 +97,13 @@ export interface PlannerToolEffects {
   spawnSubagents: (args: SpawnSubagentsArgs) => Promise<void>;
   /** Mutate in-memory push policy (key→rule object). Unknown keys ignored. */
   updatePushPolicy: (delta: Record<string, unknown>) => void;
-  /** Best-effort `git add <file> && git commit -m <msg>` on the workspace. */
-  commitPlanFile: (file: 'plan.md' | 'goal.json', message?: string) => Promise<void>;
+  /**
+   * Write content to <workspace>/<file> (plan.md or goal.json), then
+   * best-effort `git add && git commit`. The Planner has no Write/Edit
+   * tools — this autoloop tool is the only path to author plan.md/goal.json,
+   * which physically prevents the Planner from doing Coder work.
+   */
+  writePlanFile: (file: 'plan.md' | 'goal.json', content: string, commitMessage?: string) => Promise<void>;
 }
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
@@ -206,12 +211,28 @@ export async function applyPlannerToolCalls(
           fx.updatePushPolicy(call.args);
           break;
         }
-        case 'write_plan_committed': {
-          await fx.commitPlanFile('plan.md', (call.args as { message?: string }).message);
+        case 'write_plan': {
+          const { content, commit_message } = call.args as { content?: string; commit_message?: string };
+          if (typeof content !== 'string' || !content.trim()) {
+            throw new Error('write_plan requires non-empty `content` (full plan.md body)');
+          }
+          await fx.writePlanFile('plan.md', content, commit_message);
           break;
         }
-        case 'write_goal_committed': {
-          await fx.commitPlanFile('goal.json', (call.args as { message?: string }).message);
+        case 'write_goal': {
+          const { content, commit_message } = call.args as { content?: string; commit_message?: string };
+          if (typeof content !== 'string' || !content.trim()) {
+            throw new Error('write_goal requires non-empty `content` (full goal.json body)');
+          }
+          // Validate it parses as JSON — goal.json must be machine-readable.
+          // The error message includes the parse position so the Planner can
+          // self-correct on the next turn.
+          try {
+            JSON.parse(content);
+          } catch (e) {
+            throw new Error(`write_goal content is not valid JSON: ${(e as Error).message}`);
+          }
+          await fx.writePlanFile('goal.json', content, commit_message);
           break;
         }
         default:

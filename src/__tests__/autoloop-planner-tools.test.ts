@@ -6,9 +6,15 @@ import { describe, it, expect } from 'vitest';
 import { applyPlannerToolCalls, parsePlannerReply, type PlannerToolEffects } from '../autoloop/planner-tools.js';
 import type { AnyAutoloopMessage } from '../autoloop/messages.js';
 
-function makeMockEffects(): { fx: PlannerToolEffects; calls: string[]; policyDelta: Record<string, unknown> } {
+function makeMockEffects(): {
+  fx: PlannerToolEffects;
+  calls: string[];
+  policyDelta: Record<string, unknown>;
+  writes: Array<{ file: string; content: string; msg?: string }>;
+} {
   const calls: string[] = [];
   const policyDelta: Record<string, unknown> = {};
+  const writes: Array<{ file: string; content: string; msg?: string }> = [];
   const fx: PlannerToolEffects = {
     spawnSubagents: async (args) => {
       calls.push(`spawnSubagents:${JSON.stringify(args)}`);
@@ -17,11 +23,12 @@ function makeMockEffects(): { fx: PlannerToolEffects; calls: string[]; policyDel
       Object.assign(policyDelta, delta);
       calls.push(`updatePushPolicy:${JSON.stringify(delta)}`);
     },
-    commitPlanFile: async (file, msg) => {
-      calls.push(`commit:${file}:${msg ?? ''}`);
+    writePlanFile: async (file, content, msg) => {
+      writes.push({ file, content, msg });
+      calls.push(`write:${file}:${msg ?? ''}`);
     },
   };
-  return { fx, calls, policyDelta };
+  return { fx, calls, policyDelta, writes };
 }
 
 describe('parsePlannerReply', () => {
@@ -45,7 +52,7 @@ Let me know if you want to adjust.`;
 
   it('extracts multiple blocks in order', () => {
     const reply = `\`\`\`autoloop
-{"tool": "write_plan_committed", "args": {"message": "first plan"}}
+{"tool": "write_plan", "args": {"content": "# Plan\\n..."}}
 \`\`\`
 
 then
@@ -54,7 +61,7 @@ then
 {"tool": "spawn_subagents", "args": {"coder_model": "sonnet"}}
 \`\`\``;
     const { calls } = parsePlannerReply(reply);
-    expect(calls.map((c) => c.tool)).toEqual(['write_plan_committed', 'spawn_subagents']);
+    expect(calls.map((c) => c.tool)).toEqual(['write_plan', 'spawn_subagents']);
   });
 
   it('records parse errors but keeps going on malformed blocks', () => {
@@ -163,5 +170,44 @@ describe('applyPlannerToolCalls', () => {
     const r = await applyPlannerToolCalls([{ tool: 'notify_user', args: { level: 'info' } }], fx, 0);
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0].error).toContain('summary');
+  });
+
+  it('write_plan writes plan.md content via the effect', async () => {
+    const { fx, writes } = makeMockEffects();
+    const r = await applyPlannerToolCalls(
+      [{ tool: 'write_plan', args: { content: '# Plan\n\n## Goal\nbuild it.\n', commit_message: 'first plan' } }],
+      fx,
+      0,
+    );
+    expect(r.errors).toEqual([]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].file).toBe('plan.md');
+    expect(writes[0].content).toContain('## Goal');
+    expect(writes[0].msg).toBe('first plan');
+  });
+
+  it('write_goal validates JSON before delegating to the effect', async () => {
+    const { fx, writes } = makeMockEffects();
+    const ok = await applyPlannerToolCalls(
+      [{ tool: 'write_goal', args: { content: '{"scalar":null,"gates":[]}' } }],
+      fx,
+      0,
+    );
+    expect(ok.errors).toEqual([]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].file).toBe('goal.json');
+
+    const bad = await applyPlannerToolCalls([{ tool: 'write_goal', args: { content: '{not json' } }], fx, 0);
+    expect(bad.errors).toHaveLength(1);
+    expect(bad.errors[0].error).toMatch(/not valid JSON/);
+    expect(writes).toHaveLength(1); // unchanged — bad call must not write
+  });
+
+  it('write_plan rejects empty content (would erase plan.md)', async () => {
+    const { fx, writes } = makeMockEffects();
+    const r = await applyPlannerToolCalls([{ tool: 'write_plan', args: { content: '   \n  ' } }], fx, 0);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].error).toContain('non-empty');
+    expect(writes).toEqual([]);
   });
 });

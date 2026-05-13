@@ -28,7 +28,7 @@ yarn-error.log*
 
 # Test coverage
 coverage/
-.claude/worktrees/
+.claude/
 .worktrees/
 
 # All documentation lives under skills/. The repo is consumed by AI agents

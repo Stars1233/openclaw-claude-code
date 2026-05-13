@@ -100,8 +100,8 @@ never see the JSON — only the Planner's narrative.
 | `resume_loop` | — | Resume after pause. |
 | `terminate` | `reason` | End run. |
 | `update_push_policy` | partial PushPolicy | Mutate notification rules (e.g. when you say "tell me every iter"). |
-| `write_plan_committed` | `message?` | git-commit current plan.md. |
-| `write_goal_committed` | `message?` | git-commit current goal.json. |
+| `write_plan` | `content` (full plan.md body), `commit_message?` | Write `plan.md` to the workspace and git-commit. The **only** way the Planner can author plan.md — Write/Edit are stripped from the Planner session as a hard role boundary. Re-running replaces the whole file. |
+| `write_goal` | `content` (full goal.json body), `commit_message?` | Same, for `goal.json`. Content is JSON-validated before write; malformed content errors back to the Planner. |
 
 ## Default push policy
 
@@ -211,9 +211,12 @@ Every JSON artifact in the ledger carries a `schema_version` field (currently
 | Endpoint | Returns |
 |---|---|
 | `GET /autoloop/list` | `{ ok, runs: AutoloopState[] }` |
+| `POST /autoloop/new` | `{ ok, run_id, planner_session }` — body `{ workspace, run_id?, planner_model?, send_timeout_ms? }` |
 | `GET /autoloop/<id>/state` | `{ ok, state: AutoloopState }` |
 | `GET /autoloop/<id>/push_log` | `{ ok, entries: PushLogEntry[] }` |
-| `GET /autoloop/<id>/events` | SSE: `snapshot` / `message` / `state` / `push` / `iter_done` / `planner_reply` / `coder_reply` / `reviewer_reply` / `terminated` |
+| `GET /autoloop/<id>/events` | SSE: `snapshot` / `message` / `state` / `push` / `iter_done` / `planner_reply` / `planner_error` / `coder_reply` / `reviewer_reply` / `terminated` |
+| `POST /autoloop/<id>/chat` | **202** `{ ok, queued: true }` — body `{ text }`. Fire-and-forget: the Planner's reply streams back via the `/events` SSE channel as a `planner_reply` event (or `planner_error` on failure); the HTTP response intentionally does NOT wait for it, because first-contact replies routinely exceed reverse-proxy idle limits (e.g. Cloudflare Tunnel cuts at ~100s → 524). 400 on empty text, 404 when the run is not in this process's memory. The MCP `autoloop_chat` tool path keeps the synchronous await-and-return-reply semantics (it runs in-process). |
+| `POST /autoloop/<id>/delete` | `{ ok }` — stops the runner if still alive, scrubs the row from `~/.claw-orchestrator/autoloop-registry.jsonl`. The ledger directory under `<workspace>/tasks/<run_id>/` is kept on disk. 404 if the run was not present in either memory or the registry. |
 
 The 3-pane UI consumes these endpoints:
 - **Left**: Planner chat (subscribes to `planner_reply`)

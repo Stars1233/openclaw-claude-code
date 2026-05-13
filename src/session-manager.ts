@@ -269,6 +269,39 @@ export function listAutoloopsFromRegistry(file = DEFAULT_AUTOLOOP_REGISTRY): Aut
 }
 
 /**
+ * Rewrite the registry with every line for the given run_id filtered out.
+ * Used by autoloopDelete to scrub a run from cross-process visibility.
+ * No-op if the file does not exist. Returns the number of lines removed.
+ */
+export function removeAutoloopFromRegistry(file: string, runId: string): number {
+  if (!fs.existsSync(file)) return 0;
+  const lines = fs.readFileSync(file, 'utf-8').split('\n');
+  let removed = 0;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (!line) {
+      kept.push(line);
+      continue;
+    }
+    try {
+      const e = JSON.parse(line) as AutoloopRegistryEntry;
+      if (e.run_id === runId) {
+        removed += 1;
+        continue;
+      }
+    } catch {
+      // malformed line — keep it, we only filter recognizable entries
+    }
+    kept.push(line);
+  }
+  if (removed === 0) return 0;
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, kept.join('\n'));
+  fs.renameSync(tmp, file);
+  return removed;
+}
+
+/**
  * Enumerate council sessions from on-disk transcripts. Called by
  * SessionManager.councilList() to surface runs that the current process didn't
  * spawn itself (e.g. runs started in another process whose transcripts have
@@ -1429,12 +1462,22 @@ export class SessionManager {
       }
       const merged: Record<string, { pid: number; ownerPid: number; since: string }> = {};
       const now = new Date().toISOString();
-      // Keep entries from OTHER live owners untouched
+      // Keep entries from OTHER LIVE owners untouched. Entries whose
+      // ownerPid is a dead process are stale bookkeeping — drop them so
+      // the file doesn't grow unboundedly across server restarts. The
+      // child processes those entries used to track were already reaped
+      // by _cleanupOrphanedPids (which runs at SessionManager init,
+      // before the first save).
       for (const [name, raw] of Object.entries(existing)) {
         if (typeof raw === 'number') continue; // legacy format — drop on first save
         const entry = raw as { pid?: number; ownerPid?: number; since?: string };
         if (typeof entry.pid !== 'number' || typeof entry.ownerPid !== 'number') continue;
         if (entry.ownerPid === process.pid) continue; // ours; we're about to rewrite
+        try {
+          process.kill(entry.ownerPid, 0);
+        } catch {
+          continue; // owner dead — stale entry, drop it
+        }
         merged[name] = {
           pid: entry.pid,
           ownerPid: entry.ownerPid,
@@ -2253,6 +2296,36 @@ export class SessionManager {
     await ctx.runner.send(AutoloopMsg.terminate(ctx.runner.state.iter, { reason }));
     this.autoloops.delete(runId);
     return true;
+  }
+
+  /**
+   * Delete a run from the system: stop the runner if it's still alive in this
+   * process, then scrub the row from the cross-process registry so it stops
+   * appearing in `autoloop_list` / the dashboard. The ledger directory on disk
+   * is NOT removed — postmortem artifacts (chat history, push log, plan.md)
+   * are kept for the user to inspect or `rm` manually.
+   *
+   * Returns true if anything was removed (in-memory entry OR registry row).
+   */
+  async autoloopDelete(runId: string): Promise<boolean> {
+    const ctx = this.autoloops.get(runId);
+    let touched = false;
+    if (ctx) {
+      try {
+        await ctx.runner.send(AutoloopMsg.terminate(ctx.runner.state.iter, { reason: 'user-delete' }));
+      } catch (err) {
+        this.logger.warn?.(`[autoloop/${runId}] terminate during delete failed: ${(err as Error).message}`);
+      }
+      this.autoloops.delete(runId);
+      touched = true;
+    }
+    try {
+      const removed = removeAutoloopFromRegistry(DEFAULT_AUTOLOOP_REGISTRY, runId);
+      if (removed > 0) touched = true;
+    } catch (err) {
+      this.logger.warn?.(`[autoloop/${runId}] registry scrub failed: ${(err as Error).message}`);
+    }
+    return touched;
   }
 
   /** Used by embedded-server to attach SSE listeners. */
