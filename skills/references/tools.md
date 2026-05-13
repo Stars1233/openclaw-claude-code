@@ -158,6 +158,58 @@ Returns `{ ok, stdout, stderr, dryRun }`.
 
 ---
 
+## Claude (4)
+
+Tools targeting Claude Code's CLI. `plugin_details` is a one-shot wrapper. The `claude_goal_*` tools require a session started with `engine: "claude"` (the default) and pre-format the `/goal` slash command introduced in CLI 2.1.139.
+
+### `plugin_details`
+
+Wraps `claude plugin details <name>` (CLI 2.1.139+). Prints the plugin's component inventory (commands, hooks, MCP servers, agents, skills) plus the per-session token cost of loading it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Plugin name (e.g. `superpowers` or `superpowers@claude-plugins-official`). |
+
+Returns `{ ok, stdout, stderr }`.
+
+### `claude_goal_set`
+
+Set a completion condition on a claude session (CLI 2.1.139+). Claude Code keeps working across turns until the condition is met, evaluating after each turn via Haiku. Sends `/goal <objective>` as a normal user message — the CLI's slash-command parser routes it to the goal subsystem. **Requires `engine: "claude"`.**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Session name. |
+| `objective` | string | yes | Completion condition (e.g. "all tests in tests/ pass"). |
+| `timeout` | number | | Timeout in ms for the resulting turn (default 300000). |
+
+Returns the regular `session_send` turn result. Unlike Codex's `/goal`, Claude does not emit a separate goal-state notification — the only surface is the assistant's reply text. Use `claude_goal_status` to query later.
+
+### `claude_goal_clear`
+
+Send `/goal clear` to remove the active goal. Requires `engine: "claude"`.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+| `timeout` | number | |
+
+Returns the regular turn result.
+
+### `claude_goal_status`
+
+Send bare `/goal` to query the active goal (objective, elapsed time, turns, tokens). Requires `engine: "claude"`.
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `name` | string | yes |
+| `timeout` | number | |
+
+Returns the regular turn result; goal info is in the assistant's reply text.
+
+> Note: Claude's `/goal` is interactive-only in the upstream TUI sense — it has no dedicated CLI flag or JSON event. These wrappers work because Claude Code interprets slash-prefixed user messages in non-interactive (`-p` / stream-json) mode the same way. The wrappers exist for engine-guard and discoverability, not protocol translation.
+
+---
+
 ## Codex (7)
 
 Tools targeting OpenAI's `codex` CLI. The `codex_resume` and `codex_review` tools are one-shot wrappers and work without a managed session. The `codex_goal_*` tools require a session started with `engine: "codex-app"` (see [multi-engine.md](./multi-engine.md)) — the legacy `engine: "codex"` (which uses `codex exec`) has no slash-command surface.

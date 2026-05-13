@@ -241,6 +241,11 @@ export class PersistentClaudeSession extends EventEmitter implements ISession {
         : [this.options.dangerouslyLoadDevelopmentChannels];
       for (const c of ch) args.push('--dangerously-load-development-channels', c);
     }
+    // CLI 2.1.129 features
+    if (this.options.pluginUrl) {
+      const urls = Array.isArray(this.options.pluginUrl) ? this.options.pluginUrl : [this.options.pluginUrl];
+      for (const u of urls) args.push('--plugin-url', u);
+    }
 
     // Ensure CWD exists (normalize to prevent path traversal)
     if (this.options.cwd) {

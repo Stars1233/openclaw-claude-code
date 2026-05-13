@@ -238,6 +238,13 @@ export interface SessionConfig {
    * Only effective when routing through Bedrock. Values: 'default' | 'flex' | 'priority'.
    */
   bedrockServiceTier?: 'default' | 'flex' | 'priority';
+  // CLI 2.1.129 features
+  /**
+   * Fetch additional plugin .zip archive(s) from URL(s) for this session.
+   * Each value is passed as `--plugin-url <url>` to Claude Code (2.1.129+).
+   * Accepts a single URL or array. No effect when engine is not 'claude'.
+   */
+  pluginUrl?: string | string[];
   // ─── Codex (codex CLI) ────────────────────────────────────────────────
   /**
    * Codex sandbox policy. Replaces the deprecated `--full-auto` flag in Codex 0.124+.

@@ -616,6 +616,95 @@ const plugin = {
       },
     });
 
+    // ─── Tool: plugin_details (CLI 2.1.139) ─────────────────────────────
+
+    api.registerTool({
+      name: 'plugin_details',
+      description:
+        "Show a plugin's component inventory (commands, hooks, MCP servers, agents, skills) plus the per-session token cost of loading it. Wraps `claude plugin details <name>` (CLI 2.1.139+).",
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Plugin name (e.g. "superpowers" or "superpowers@claude-plugins-official").',
+          },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        const result = await getManager().pluginDetails(args.name as string);
+        return { ok: true, ...result };
+      },
+    });
+
+    // ─── Tools: claude_goal_* (CLI 2.1.139 /goal slash commands) ────────
+    //
+    // Wraps Claude Code's /goal command, which keeps Claude working across
+    // turns until a stated completion condition is met. The CLI runs a
+    // small evaluator (Haiku) after each turn to check the condition.
+    // These tools just pre-format the slash text and send it via the
+    // normal session channel — there is no separate goal-state event to
+    // intercept (unlike Codex). Engine must be "claude".
+
+    api.registerTool({
+      name: 'claude_goal_set',
+      description:
+        'Set a goal condition on a claude session. Claude Code keeps working across turns until the condition is met, evaluating after each turn via Haiku. Sends `/goal <objective>`. Requires engine: "claude".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name (must be a claude session).' },
+          objective: {
+            type: 'string',
+            description: 'The completion condition. Claude pursues this until satisfied, cleared, or session ends.',
+          },
+          timeout: { type: 'number', description: 'Timeout in ms for the resulting turn (default 300000).' },
+        },
+        required: ['name', 'objective'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().claudeGoalSet(
+          args.name as string,
+          args.objective as string,
+          args.timeout as number | undefined,
+        );
+      },
+    });
+
+    api.registerTool({
+      name: 'claude_goal_clear',
+      description: 'Clear the active goal on a claude session. Sends `/goal clear`. Requires engine: "claude".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 300000).' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().claudeGoalClear(args.name as string, args.timeout as number | undefined);
+      },
+    });
+
+    api.registerTool({
+      name: 'claude_goal_status',
+      description:
+        'Query the active goal on a claude session (objective, elapsed, turns, tokens). Sends bare `/goal` and returns the assistant reply. Requires engine: "claude".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name.' },
+          timeout: { type: 'number', description: 'Timeout in ms (default 300000).' },
+        },
+        required: ['name'],
+      },
+      execute: async (_id, args) => {
+        return await getManager().claudeGoalStatus(args.name as string, args.timeout as number | undefined);
+      },
+    });
+
     // ─── Tool: codex_resume (Codex 0.119+) ──────────────────────────────
 
     api.registerTool({

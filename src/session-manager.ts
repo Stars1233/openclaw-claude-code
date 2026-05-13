@@ -1137,6 +1137,62 @@ export class SessionManager {
     return { ok: true, goal: session.goal ?? null };
   }
 
+  // ─── Claude /goal helpers (CLI 2.1.139, claude engine only) ────────
+  //
+  // Claude Code's /goal slash command works in non-interactive stream-json
+  // sessions: the CLI parses any user message starting with `/goal` and
+  // routes it to the goal subsystem. Unlike Codex's app-server protocol,
+  // Claude does not emit a separate goal-state notification — the only
+  // surface is the assistant's reply text. These wrappers are thin
+  // pre-formatters around `sendMessage()` that enforce the engine guard
+  // and pass the slash text through.
+
+  private _assertClaudeSession(name: string): void {
+    const managed = this.sessions.get(name);
+    if (!managed) throw new Error(`Session not found: ${name}`);
+    const engine = managed.config.engine || 'claude';
+    if (engine !== 'claude') {
+      throw new Error(
+        `Session "${name}" uses engine "${engine}" which does not support Claude /goal. ` +
+          `Start a session with engine: "claude" (or omit engine) to use claude_goal_* tools.`,
+      );
+    }
+  }
+
+  /** Send `/goal <objective>` to a claude session. Sets a completion condition that
+   *  Claude Code pursues across turns, evaluating after each turn via Haiku. */
+  async claudeGoalSet(name: string, objective: string, timeoutMs?: number): Promise<unknown> {
+    this._assertClaudeSession(name);
+    return await this.sendMessage(name, `/goal ${objective}`, { timeout: timeoutMs });
+  }
+
+  /** Send `/goal clear` to remove the active goal. */
+  async claudeGoalClear(name: string, timeoutMs?: number): Promise<unknown> {
+    this._assertClaudeSession(name);
+    return await this.sendMessage(name, '/goal clear', { timeout: timeoutMs });
+  }
+
+  /** Send bare `/goal` to query the active goal (elapsed time, turns, tokens). */
+  async claudeGoalStatus(name: string, timeoutMs?: number): Promise<unknown> {
+    this._assertClaudeSession(name);
+    return await this.sendMessage(name, '/goal', { timeout: timeoutMs });
+  }
+
+  // ─── Plugin Details (CLI 2.1.139) ─────────────────────────────────────
+
+  /**
+   * Wraps `claude plugin details <name>` — prints the plugin's component
+   * inventory (commands, hooks, MCP servers, agents, skills) plus the
+   * per-session token cost of loading it. Returns raw stdout/stderr.
+   */
+  async pluginDetails(name: string): Promise<{ stdout: string; stderr: string }> {
+    if (!name || typeof name !== 'string') throw new Error('plugin name required');
+    const { stdout, stderr } = await execFileAsync(this.pluginConfig.claudeBin, ['plugin', 'details', name], {
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return { stdout, stderr };
+  }
+
   // ─── Codex one-shot wrappers ──────────────────────────────────────────
 
   private _codexBin(): string {

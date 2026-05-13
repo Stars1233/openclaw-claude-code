@@ -84,7 +84,11 @@ describe('plugin tool registration', () => {
 
   it('does not register deprecated engine-coupled aliases', () => {
     // v3.0 aliases (claude_session_*, claude_team_*, etc.) were removed in v3.1.
+    // The `claude_goal_*` family (4.1.0+) is allowed because /goal is genuinely
+    // Claude-CLI-specific and mirrors the existing `codex_goal_*` naming.
+    const allowedClaudeTools = new Set(['claude_goal_set', 'claude_goal_clear', 'claude_goal_status']);
     for (const tool of tools) {
+      if (allowedClaudeTools.has(tool.name)) continue;
       expect(tool.name.startsWith('claude_'), `deprecated alias still registered: ${tool.name}`).toBe(false);
     }
   });

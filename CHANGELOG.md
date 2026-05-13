@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-05-13
+
+### Added — Sync to Claude Code CLI 2.1.140
+
+Catches up on programmatic surface between Claude CLI 2.1.126 and 2.1.140.
+
+- **`claude_goal_set` / `claude_goal_clear` / `claude_goal_status`** tools wrap
+  the CLI 2.1.139 `/goal` slash command. Claude Code keeps working across turns
+  until the stated condition is met, evaluating after each turn via Haiku.
+  The wrappers send the slash text via the existing session channel and enforce
+  `engine: "claude"`; unlike Codex's `/goal`, there is no separate goal-state
+  notification — the only surface is the assistant's reply text.
+
+- **`plugin_details`** tool wraps `claude plugin details <name>` (CLI 2.1.139+).
+  Returns the plugin's component inventory plus per-session token cost.
+
+- **`pluginUrl`** session config maps to `--plugin-url` (CLI 2.1.129+). Accepts a
+  single URL or an array; each value is fetched as a plugin `.zip` archive for
+  the session.
+
+Items intentionally not exposed at the wrapper level: settings.json fields
+(`worktree.baseRef`, `autoMode.hard_deny`, `skillOverrides`, `sandbox.bwrapPath`
+/ `socatPath`, `parentSettingsBehavior`) are already user-controlled via the
+existing `--settings` flag; TTY-only env vars (`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`,
+`CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_CODE_SESSION_ID`) do not apply to a
+non-interactive subprocess; hook config (`args: string[]` exec form,
+`continueOnBlock`, hook input `effort.level`) and the subagent
+`x-claude-code-agent-id` HTTP header are internal to the CLI.
+
 ## [4.0.7] - 2026-05-13
 
 ### Fixed — CI flake in manager.test.ts (ENOTEMPTY during afterEach)
