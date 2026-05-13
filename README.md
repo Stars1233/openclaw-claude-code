@@ -153,13 +153,53 @@ const result = await manager.sendMessage("task", "Fix the failing tests");
 clawo council start "Refactor the API layer and add tests"
 ```
 
+### Quick Start: dashboard
+
+Run `clawo serve` (or set up `com.clawo.serve` under launchd — see
+`skills/references/dashboard.md`) and visit the dashboard once with the
+auth-cookie redirect:
+
+```sh
+clawo serve            # one-shot, foreground
+# or for an always-on background service, see skills/references/dashboard.md
+T=$(cat ~/.openclaw/server-token)
+open "http://127.0.0.1:18796/login?token=$T&redirect=/dash"
+```
+
+`/login` validates the token, sets the `clawo_auth` cookie, and 302s to
+`/dash`. Bookmark `/dash` directly — the token never appears in the
+bookmark URL. The page has three tabs:
+
+- **Autoloop** — click **+ New** to start an autoloop run in any
+  workspace; the loop runs `Planner ↔ Coder ↔ Reviewer` until the goal
+  is hit.
+- **Council** — click **+ New** to launch a 3-agent council session on
+  a task; the agents vote on consensus until they agree (or hit
+  maxRounds).
+- **Forge** — the ultraapp interview-to-deployed-app flow (Quick Start
+  below).
+
+Runs started from any process (CLI, plugin tool, dashboard) show up
+together — `councilList()` / `autoloopList()` union in-memory state
+with on-disk transcripts and registry entries.
+
 ### Quick Start: ultraapp
 
 ```bash
 clawo serve   # dashboard at :18796, router at :19000
 ```
 
+<<<<<<< HEAD
 Open the dashboard, pick **Forge → + New**, walk the interview (≈5–8 questions, each with a recommended option), click **Start Build**. The share card lands in chat with the live URL. Iterate via chat for cosmetic / spec-delta changes; **Make Public…** gives Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+=======
+1. `clawo serve` (boots the dashboard at `:18796` and the ultraapp router at `:19000`)
+2. Open the dashboard via the `/login` redirect above and pick the **Forge** tab
+3. Click **+ New** and walk the interview (≈ 5–8 questions; each has a recommended option — Submit it unless you disagree)
+4. Click **Start Build**. Council writes a complete codebase; fix-on-failure drives `npm install && npm run build && npm test` (plus `docker build .` only in opt-in `--ultraapp-runtime docker` mode) to green; deploy registers the slug with the router.
+5. The share card appears in chat with the live URL: `http://127.0.0.1:19000/forge/<slug>/`. Hit it from a browser to use your app.
+6. Iterate via chat: type "make button green" → cosmetic patch (Opus diff + validate + version snapshot); type "also output a thumbnail" → spec-delta focused interview + auto-rerun. Promote any version from the AppSpec column.
+7. Want to share? Click **Make Public…** for copy-pasteable Cloudflare Tunnel / ngrok / Tailscale / Caddy snippets.
+>>>>>>> dcf7f01 (docs: dashboard launchers + standalone serve guidance (v4.0.0))
 
 Driveable headlessly via 14 MCP tools (`ultraapp_new` / `_answer` / `_build_start` / `_feedback` / `_promote_version` / …) or the matching HTTP routes — see [`skills/references/ultraapp.md`](./skills/references/ultraapp.md).
 

@@ -203,6 +203,67 @@ engine or skill drift fails this test loudly. Manual smoke runner at
   to reconstruct full trace JSONL (incl. tool calls, which never appear
   in `chat.jsonl`).
 
+### Added — Dashboard launchers + cross-process visibility
+
+The dashboard is no longer read-only. Council and Autoloop tabs now have
+"+ New" sidebar buttons that match the Forge tab pattern from the same
+release:
+
+- **`POST /council/new`** (`src/embedded-server.ts`): minimal body
+  `{ task, projectDir, maxRounds? }`, wires to a 3-agent Claude Opus
+  preset (planner / pragmatic implementer / critical reviewer). The
+  existing `council_start` plugin tool remains the path for fully
+  custom agent configurations.
+- **`POST /autoloop/new`** (`src/embedded-server.ts`): minimal body
+  `{ workspace, run_id?, planner_model?, send_timeout_ms? }`. `run_id`
+  is generated server-side (`auto-<ts>-<rand>`) when missing or
+  malformed; explicit well-shaped ids are honored.
+- **Tab-aware modal launcher** (`src/dashboard/index.html`): one modal
+  swaps visible fields by `state.tab`, submits to the right endpoint,
+  selects the new run, refreshes the list, and opens the detail pane
+  with SSE attached.
+- **Empty-state CTA**: replaces the bland "Select a run to view" with
+  "Start your first <X>" that triggers the same launcher. No more
+  ambiguous fresh-install state.
+
+Standalone deployment is now the documented setup. Run
+`clawo serve --port 18796` under launchd (see
+`skills/references/dashboard.md` for the plist template). It owns the
+auth token; the OpenClaw gateway plugin keeps its lazy-init embedded
+server but gracefully skips on EADDRINUSE.
+
+Cross-process visibility for past runs:
+
+- **`SessionManager.councilList()`** unions in-memory sessions with
+  on-disk transcripts at `~/.openclaw/council-logs/*.md`, deduped by
+  id (in-memory wins), sorted newest-first.
+- **Autoloop registry** (new file
+  `~/.claw-orchestrator/autoloop-registry.jsonl`): `autoloopStart()`
+  appends one row per run; `autoloopList()` unions the registry with
+  in-memory runs, drops stale entries whose ledger directory no longer
+  exists.
+- Council transcripts now include an `- **ID**: <session.id>` header
+  line so disk-derived records dedup reliably against in-memory state.
+  Legacy transcripts fall back to a filename-derived id.
+
+### Fixed — embedded-server token-file race
+
+`_writeTokenFile()` previously ran unconditionally during `start()`,
+**before** `server.listen()`. When a second `EmbeddedServer` instance
+lost the EADDRINUSE race it skipped listening but had already
+overwritten `~/.openclaw/server-token` with a different value,
+invalidating any cookies the winner had minted. The write now happens
+inside the `listen()`-success callback, so only the process that
+actually owns the port persists its token — required for the new
+standalone-plus-plugin dual-process deployment to be safe.
+
+### Added — `/login` redirect endpoint
+
+`GET /login?token=<value>&redirect=/dash` validates the token, sets the
+`HttpOnly clawo_auth` cookie, and 302s to the redirect target
+(same-origin only). Browsers can bookmark `/dash` directly — the token
+never appears in the bookmark URL, referrer headers, or CF logs.
+
 ## [3.7.1] - 2026-05-11
 
 ### Fixed
