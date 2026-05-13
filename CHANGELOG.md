@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **ultraapp interview parser** — when Claude returned `<tool name=...>` calls
+  AND a fenced \`\`\`question block in a single reply, `parseInterviewReply`
+  used to return kind `'tools'` and silently drop the question. The followup
+  `tool_result` driveTurn would get a free-text reply ("Waiting on the X
+  question above.") and the interview would stall — the question was lost
+  forever. Now returns a new `'tools-and-question'` kind; the manager runs
+  the tools, surfaces the question to the user immediately, and fires the
+  `tool_result` followup in the background. Surfaced while running real
+  reference-trace captures (see v1.0 entry below).
+
 ### Added
 
+- **ultraapp debug hook** — `UA_DEBUG_TURNS=<dir>` env flag. When set,
+  every `driveTurn` writes its raw `(in, out)` pair to
+  `<dir>/<runId>.turns.jsonl`. Off by default; production behavior
+  unchanged. Used by trace-capture scripts to reconstruct full trace JSONL
+  (incl. tool calls, which never appear in `chat.jsonl`).
 - **ultraapp v0.6** — full MCP write surface. The previous 3 read-only MCP
   tools (`ultraapp_list/get/status`) are joined by 11 write tools so any
   MCP host (OpenClaw gateway, Hermes Agent, Claude Desktop, Cursor, etc.)
@@ -37,6 +54,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     each as `<name>.jsonl` + `expected/<name>.appspec.json` and append
     to `TRACES` in `spec-extraction-quality.test.ts`. Format spec at
     `src/__tests__/fixtures/ultraapp-traces/_format.md`.
+  - **Findings from real-API capture attempt (2026-05-13)**: drove
+    `image-batch-resize` end-to-end via `/ultraapp/new` → `/answer` loop
+    against real Claude Opus. Surfaced two issues that block clean
+    regression-trace authoring with the "always pick recommended" strategy:
+    (1) when the council pre-validates `update_spec` patches strictly,
+    `pipeline.steps` patches were rejected and Claude punted the pipeline
+    to the builder — leaving an incomplete spec; (2) the
+    "always-pick-recommended" answer strategy is too dumb — Claude
+    sometimes asks the same question multiple ways or asks meta-questions
+    ("validator keeps rejecting; how do you want to proceed?") which a
+    smarter answer policy would handle. Both findings argue for capturing
+    traces by hand (operator drives + occasionally overrides) rather than
+    via a script. Recipe in `src/__tests__/fixtures/ultraapp-traces/_format.md`.
+  - Companion fix shipped from the same capture session: the parser bug
+    where `<tool>` calls + a fenced \`\`\`question in the same reply caused
+    the question to be silently dropped (interview would stall). See the
+    Fixed section below.
   - **Out of scope here (intentionally):** version bump to 4.0.0 and the
     associated release tag. Per project rules, public-facing release
     text needs explicit user approval first; the v1.0 release decision
