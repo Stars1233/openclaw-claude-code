@@ -109,3 +109,85 @@ describe('POST /council/new', () => {
     expect(r.status).toBe(400);
   });
 });
+
+describe('POST /autoloop/new', () => {
+  let manager: SessionManager;
+  let server: EmbeddedServer;
+  let port: number;
+  let token: string;
+
+  beforeAll(async () => {
+    manager = new SessionManager({});
+    // autoloopStart kicks off Claude subprocesses — stub for unit tests.
+    vi.spyOn(manager, 'autoloopStart').mockImplementation(async (opts) => ({
+      runId: opts.runId,
+      plannerSession: `planner-${opts.runId}`,
+      state: {
+        run_id: opts.runId,
+        status: 'planning',
+        iter: 0,
+        subagents_spawned: false,
+        started_at: '2026-05-13T05:00:00.000Z',
+        workspace: opts.workspace,
+        ledger_dir: path.join(opts.workspace, 'tasks', opts.runId),
+        push_log_count: 0,
+        status_reason: null,
+        consecutive_phase_errors: 0,
+        recent_phase_errors: [],
+        metric_history: [],
+        last_activity_at: 0,
+      },
+    }));
+    const ephemeral = await freePort();
+    server = new EmbeddedServer(manager, ephemeral);
+    port = await server.start();
+    token = fs.readFileSync(path.join(os.homedir(), '.openclaw', 'server-token'), 'utf-8').trim();
+  });
+  afterAll(async () => {
+    await server.stop();
+    await manager.shutdown();
+  });
+
+  it('starts an autoloop and returns a server-generated run_id', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ workspace: '/tmp' }),
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { ok: boolean; run_id: string };
+    expect(j.ok).toBe(true);
+    expect(j.run_id).toMatch(/^auto-\d+-[a-f0-9]+$/);
+  });
+
+  it('honors an explicit well-shaped run_id', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ workspace: '/tmp', run_id: 'my-custom-id' }),
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { run_id: string };
+    expect(j.run_id).toBe('my-custom-id');
+  });
+
+  it('rejects a malformed run_id (server-generates instead)', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ workspace: '/tmp', run_id: 'has spaces and !@#$' }),
+    });
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { run_id: string };
+    expect(j.run_id).toMatch(/^auto-\d+-[a-f0-9]+$/);
+  });
+
+  it('returns 400 when workspace is missing', async () => {
+    const r = await fetch(`http://127.0.0.1:${port}/autoloop/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    expect(r.status).toBe(400);
+  });
+});

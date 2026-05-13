@@ -641,6 +641,46 @@ export class EmbeddedServer {
         return;
       }
 
+      // ─── Autoloop — launch new (dashboard "+ New" button) ───────
+      //
+      // Minimal contract: { workspace, run_id?, planner_model?, send_timeout_ms? }.
+      // When run_id is omitted or malformed, the server generates
+      // `auto-{timestamp}-{4-byte-hex}`. Power users wanting a meaningful id
+      // (e.g. "ml-refactor-v2") can pass run_id explicitly.
+      if (path === '/autoloop/new') {
+        const workspace = (body as { workspace?: string }).workspace;
+        if (typeof workspace !== 'string' || !workspace.trim()) {
+          json(400, { ok: false, error: 'workspace (string) required' });
+          return;
+        }
+        const safeWorkspace = sanitizeCwd(workspace);
+        if (!safeWorkspace) {
+          json(400, { ok: false, error: 'workspace failed sanitization' });
+          return;
+        }
+        const explicitId = (body as { run_id?: string }).run_id;
+        const runId =
+          typeof explicitId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(explicitId)
+            ? explicitId
+            : `auto-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+        try {
+          const result = await this.manager.autoloopStart({
+            runId,
+            workspace: safeWorkspace,
+            plannerModel: (body as { planner_model?: string }).planner_model,
+            sendTimeoutMs: (body as { send_timeout_ms?: number }).send_timeout_ms,
+          });
+          json(200, {
+            ok: true,
+            run_id: result.runId,
+            planner_session: result.plannerSession,
+          });
+        } catch (err) {
+          json(400, { ok: false, error: (err as Error).message });
+        }
+        return;
+      }
+
       const v2StateMatch = path.match(/^\/autoloop\/([^/]+)\/state$/);
       if (v2StateMatch) {
         const state = this.manager.autoloopStatus(v2StateMatch[1]);
