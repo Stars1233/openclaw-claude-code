@@ -213,11 +213,7 @@ interface SendOptions {
 //   - Autoloop: registry at ~/.claw-orchestrator/autoloop-registry.jsonl
 
 const DEFAULT_COUNCIL_LOG_DIR = path.join(os.homedir(), '.openclaw', 'council-logs');
-const DEFAULT_AUTOLOOP_REGISTRY = path.join(
-  os.homedir(),
-  '.claw-orchestrator',
-  'autoloop-registry.jsonl',
-);
+const DEFAULT_AUTOLOOP_REGISTRY = path.join(os.homedir(), '.claw-orchestrator', 'autoloop-registry.jsonl');
 
 /** Public shape returned by listCouncilsFromDisk(). Mirrors a subset of CouncilSession. */
 export interface CouncilDiskRecord {
@@ -242,10 +238,7 @@ export interface AutoloopRegistryEntry {
 }
 
 /** Append-only registry write. Safe under concurrent writers — append is atomic for short lines. */
-export function appendAutoloopRegistry(
-  file: string,
-  entry: AutoloopRegistryEntry,
-): void {
+export function appendAutoloopRegistry(file: string, entry: AutoloopRegistryEntry): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, JSON.stringify(entry) + '\n');
 }
@@ -255,9 +248,7 @@ export function appendAutoloopRegistry(
  * ledger_dir no longer exists on disk (cleanup of moved/deleted workspaces).
  * Returns entries newest-first.
  */
-export function listAutoloopsFromRegistry(
-  file = DEFAULT_AUTOLOOP_REGISTRY,
-): AutoloopRegistryEntry[] {
+export function listAutoloopsFromRegistry(file = DEFAULT_AUTOLOOP_REGISTRY): AutoloopRegistryEntry[] {
   if (!fs.existsSync(file)) return [];
   const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
   const seen = new Set<string>();
@@ -304,8 +295,7 @@ export function listCouncilsFromDisk(logDir = DEFAULT_COUNCIL_LOG_DIR): CouncilD
     } catch {
       continue;
     }
-    const id =
-      /^-\s+\*\*ID\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || entry.replace(/\.md$/, '');
+    const id = /^-\s+\*\*ID\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || entry.replace(/\.md$/, '');
     const task = /^-\s+\*\*Task\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || '(no task recorded)';
     const startTime = /^-\s+\*\*Time\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || '';
     const status = /^-\s+\*\*Status\*\*:\s*([^\n]+)/m.exec(head)?.[1]?.trim() || 'unknown';
@@ -1714,9 +1704,7 @@ export class SessionManager {
             config: { agents: [], maxRounds: 0, projectDir: '' },
           }) as CouncilSession,
       );
-    return [...inMemory, ...fromDisk].sort((a, b) =>
-      (b.startTime || '').localeCompare(a.startTime || ''),
-    );
+    return [...inMemory, ...fromDisk].sort((a, b) => (b.startTime || '').localeCompare(a.startTime || ''));
   }
 
   /** Used by embedded-server to subscribe to a council's event stream. */
@@ -2238,9 +2226,7 @@ export class SessionManager {
           last_activity_at: 0,
         }),
       );
-    return [...inMemory, ...fromDisk].sort((a, b) =>
-      (b.started_at || '').localeCompare(a.started_at || ''),
-    );
+    return [...inMemory, ...fromDisk].sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''));
   }
 
   /**

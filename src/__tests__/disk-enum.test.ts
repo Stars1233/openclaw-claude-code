@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-  listCouncilsFromDisk,
-  listAutoloopsFromRegistry,
-  appendAutoloopRegistry,
-} from '../session-manager.js';
+import { listCouncilsFromDisk, listAutoloopsFromRegistry, appendAutoloopRegistry } from '../session-manager.js';
 
 describe('listCouncilsFromDisk', () => {
   let tmpDir: string;
