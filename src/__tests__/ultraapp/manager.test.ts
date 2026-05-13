@@ -347,6 +347,19 @@ describe('UltraappManager', () => {
   });
 
   it('setModeForDelta + interview-complete auto-fires startBuild (no manual click required)', async () => {
+    // Mock the heavy build pipeline so this test, which only verifies the
+    // INTERVIEW-COMPLETE → startBuild handoff, doesn't actually spawn real
+    // council subprocesses + git worktrees. Without this, the council was
+    // still writing into <tmp>/.../council-project/.git while afterEach
+    // rmSync'd the tmp dir, causing flaky ENOTEMPTY teardown failures
+    // in CI (race between rmSync and the live git workers).
+    const councilMod = await import('../../ultraapp/council-adapter.js');
+    const fixMod = await import('../../ultraapp/fix-on-failure.js');
+    const synth = vi
+      .spyOn(councilMod, 'runCouncilSynth')
+      .mockResolvedValue({ ok: false, reason: 'mocked — skipping build', rounds: 0 });
+    const fix = vi.spyOn(fixMod, 'runFixOnFailure').mockResolvedValue({ ok: false, rounds: 0 });
+
     // Set up a fake session whose sendMessage replies with a [COMPLETE]
     // marker every call EXCEPT the first (the kickoff at createRun must be
     // a question, otherwise the run ends before we can drive it).
@@ -385,7 +398,14 @@ describe('UltraappManager', () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     const finalState = await store.readState(id);
-    expect(['queued', 'building', 'build-complete']).toContain(finalState.mode);
+    // 'failed' is also acceptable: the mocked council returns ok:false,
+    // so once startBuild dispatches the build pipeline correctly, it may
+    // race past queued → failed before our 30-iter polling loop catches it.
+    // The contract this test guards is "auto-fired startBuild" (mode left
+    // 'done'); the exact terminal state isn't load-bearing.
+    expect(['queued', 'building', 'build-complete', 'failed']).toContain(finalState.mode);
+    synth.mockRestore();
+    fix.mockRestore();
   });
 
   it('startBuild rejects when strict spec validation fails (cross-ref to undeclared input)', async () => {

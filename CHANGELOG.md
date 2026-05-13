@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2026-05-13
+
+### Fixed — CI flake in manager.test.ts (ENOTEMPTY during afterEach)
+
+The "setModeForDelta + interview-complete auto-fires startBuild" case
+let `startBuild` actually spawn a real council subprocess + git worktree,
+then dropped back to the polling loop as soon as mode hit `queued`. By
+the time `afterEach` ran `fs.rmSync(tmp, recursive)`, the council git
+workers were still writing into `<tmp>/council-project/.git`, racing the
+recursive removal and surfacing as `ENOTEMPTY: directory not empty,
+rmdir '.git'`.
+
+The test's contract is the interview-complete → startBuild handoff —
+nothing about the build pipeline's downstream behaviour. Now mocks
+`runCouncilSynth` and `runFixOnFailure` so the build short-circuits
+without spawning external workers. Local stress (20× consecutive runs)
+passes cleanly.
+
 ## [4.0.6] - 2026-05-13
 
 ### Fixed — `UltraappStore` JSON files now written atomically
